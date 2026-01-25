@@ -176,7 +176,7 @@ public class ItemBrowserManagerImpl implements ItemBrowserManager {
             }
             Item<?> item = this.plugin.itemManager().createWrappedItem(it.icon(), player);
             if (ItemUtils.isEmpty(item)) {
-                this.plugin.logger().warn("Can't not find item " + it.icon() + " for category icon");
+                this.plugin.logger().warn("Cannot find item " + it.icon() + " for category icon");
                 return null;
             }
             item.customNameJson(AdventureHelper.componentToJson(AdventureHelper.miniMessage().deserialize(it.displayName(), ItemBuildContext.EMPTY_RESOLVERS)));
@@ -1194,7 +1194,7 @@ public class ItemBrowserManagerImpl implements ItemBrowserManager {
                         } else {
                             List<Item<?>> ingredients = new ArrayList<>();
                             for (UniqueKey in : ingredient.items()) {
-                                ingredients.add(this.plugin.itemManager().createWrappedItem(in.key(), player));
+                                ingredients.add(this.plugin.itemManager().createWrappedItem(in.key(), player).count(ingredient.count()));
                             }
                             layout.addIngredient(currentChar, GuiElement.recipeIngredient(ingredients, (e, c) -> {
                                 c.cancel();
@@ -1236,8 +1236,9 @@ public class ItemBrowserManagerImpl implements ItemBrowserManager {
                     char currentChar = (char) (start + x + y * 3);
                     if (i < ingredients.size()) {
                         List<Item<?>> ingredientItems = new ArrayList<>();
-                        for (UniqueKey in : ingredients.get(i).items()) {
-                            ingredientItems.add(this.plugin.itemManager().createWrappedItem(in.key(), player));
+                        net.momirealms.craftengine.core.item.recipe.Ingredient<Object> ingredient = ingredients.get(i);
+                        for (UniqueKey in : ingredient.items()) {
+                            ingredientItems.add(this.plugin.itemManager().createWrappedItem(in.key(), player).count(ingredient.count()));
                         }
                         layout.addIngredient(currentChar, GuiElement.recipeIngredient(ingredientItems, (e, c) -> {
                             c.cancel();

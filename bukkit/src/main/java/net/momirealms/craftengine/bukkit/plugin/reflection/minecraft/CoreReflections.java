@@ -3,6 +3,7 @@ package net.momirealms.craftengine.bukkit.plugin.reflection.minecraft;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonElement;
+import com.mojang.datafixers.DataFixer;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DynamicOps;
 import io.netty.buffer.ByteBuf;
@@ -29,6 +30,7 @@ import java.util.function.Function;
 import static java.util.Objects.requireNonNull;
 
 public final class CoreReflections {
+    private CoreReflections() {}
 
     public static final Class<?> clazz$RandomSource = requireNonNull(
             ReflectionUtils.getClazz(BukkitReflectionUtils.assembleMCClass("util.RandomSource"))
@@ -440,10 +442,6 @@ public final class CoreReflections {
             ReflectionUtils.getMethod(clazz$IdMapper, Object.class, int.class)
     );
 
-    public static final Method method$Registry$asHolderIdMap = requireNonNull(
-            ReflectionUtils.getMethod(clazz$Registry, clazz$IdMap)
-    );
-
     public static final Class<?> clazz$Direction = requireNonNull(
             BukkitReflectionUtils.findReobfOrMojmapClass(
                     "core.EnumDirection",
@@ -737,7 +735,7 @@ public final class CoreReflections {
             )
     );
 
-    public static final Method method$$LevelReader$dimensionType = requireNonNull(
+    public static final Method method$LevelReader$dimensionType = requireNonNull(
             ReflectionUtils.getMethod(
                     clazz$LevelReader, clazz$DimensionType
             )
@@ -1161,9 +1159,51 @@ public final class CoreReflections {
             )
     );
 
+    public static final Field field$ConfiguredFeature$DIRECT_CODEC = requireNonNull(
+            ReflectionUtils.getDeclaredField(clazz$ConfiguredFeature, Codec.class, 0)
+    );
+
+    public static final Field field$ConfiguredFeature$CODEC = requireNonNull(
+            ReflectionUtils.getDeclaredField(clazz$ConfiguredFeature, Codec.class, 1)
+    );
+
+    @SuppressWarnings("unchecked")
+    public static Codec<Object> getConfiguredFeature$CODEC() {
+        try {
+            return (Codec<Object>) field$ConfiguredFeature$CODEC.get(null);
+        } catch (ReflectiveOperationException e) {
+            throw new ReflectionInitException("Failed to init instance$ConfiguredFeature$CODEC", e);
+        }
+    }
+
+    public static final Codec<Object> instance$ConfiguredFeature$CODEC = getConfiguredFeature$CODEC();
+
     public static final Class<?> clazz$PlacedFeature = requireNonNull(
             ReflectionUtils.getClazz(BukkitReflectionUtils.assembleMCClass("world.level.levelgen.placement.PlacedFeature"))
     );
+
+    public static final Constructor<?> constructor$PlacedFeature = requireNonNull(
+            ReflectionUtils.getConstructor(clazz$PlacedFeature, clazz$Holder, List.class)
+    );
+
+    public static final Class<?> clazz$PlacementModifier = requireNonNull(
+            ReflectionUtils.getClazz(BukkitReflectionUtils.assembleMCClass("world.level.levelgen.placement.PlacementModifier"))
+    );
+
+    public static final Field field$PlacementModifier$CODEC = requireNonNull(
+            ReflectionUtils.getDeclaredField(clazz$PlacementModifier, Codec.class, 0)
+    );
+
+    @SuppressWarnings("unchecked")
+    public static Codec<Object> getPlacementModifier$CODEC() {
+        try {
+            return (Codec<Object>) field$PlacementModifier$CODEC.get(null);
+        } catch (ReflectiveOperationException e) {
+            throw new ReflectionInitException("Failed to init instance$ConfiguredFeature$CODEC", e);
+        }
+    }
+
+    public static final Codec<Object> instance$PlacementModifier$CODEC = getPlacementModifier$CODEC();
 
     // 1.21+
     public static final Class<?> clazz$JukeboxSong = ReflectionUtils.getClazz(
@@ -1212,6 +1252,16 @@ public final class CoreReflections {
 
     public static final Field field$Block$StateDefinition = requireNonNull(
             ReflectionUtils.getDeclaredField(clazz$Block, clazz$StateDefinition, 0)
+    );
+
+    public static final Field field$Block$descriptionId = MiscUtils.requireNonNullIf(
+            ReflectionUtils.getDeclaredField(clazz$Block, String.class, 0),
+            !VersionHelper.isOrAbove1_21_2()
+    );
+
+    public static final Field field$BlockBehaviour$descriptionId = MiscUtils.requireNonNullIf(
+            ReflectionUtils.getDeclaredField(clazz$BlockBehaviour, String.class, 0),
+            VersionHelper.isOrAbove1_21_2()
     );
 
     public static final Field field$StateDefinition$states = requireNonNull(
@@ -2402,6 +2452,10 @@ public final class CoreReflections {
     
     public static final Method method$PalettedContainer$getAndSet = Objects.requireNonNull(
             ReflectionUtils.getMethod(clazz$PalettedContainer, Object.class, new String[] {"a", "getAndSet"}, int.class, int.class, int.class, Object.class)
+    );
+
+    public static final Method method$PalettedContainer$getAndSetUnchecked = Objects.requireNonNull(
+            ReflectionUtils.getMethod(clazz$PalettedContainer, Object.class, new String[] {"b", "getAndSetUnchecked"}, int.class, int.class, int.class, Object.class)
     );
 
     public static final Class<?> clazz$MenuType = requireNonNull(
@@ -4438,6 +4492,22 @@ public final class CoreReflections {
             )
     );
 
+//    public static final Field field$Advancement$CODEC = MiscUtils.requireNonNullIf(
+//            ReflectionUtils.getStaticField(clazz$Advancement, Codec.class, 0),
+//            VersionHelper.isOrAbove1_20_3()
+//    );
+//
+//    @SuppressWarnings("unchecked")
+//    public static Codec<Object> getAdvancement$CODEC() {
+//        try {
+//            return field$Advancement$CODEC == null ? null : (Codec<Object>) field$Advancement$CODEC.get(null);
+//        } catch (ReflectiveOperationException e) {
+//            throw new ReflectionInitException("Failed to initialize Advancement$CODEC", e);
+//        }
+//    }
+//
+//    public static final Codec<Object> instance$Advancement$CODEC = getAdvancement$CODEC();
+
     public static final Constructor<?> constructor$Advancement = requireNonNull(
             VersionHelper.isOrAbove1_20_2() ?
             ReflectionUtils.getConstructor(clazz$Advancement, Optional.class, Optional.class, clazz$AdvancementRewards, Map.class, clazz$AdvancementRequirements, boolean.class) :
@@ -4461,6 +4531,31 @@ public final class CoreReflections {
                     "advancements.AdvancementHolder"
             ), VersionHelper.isOrAbove1_20_2()
     );
+//
+//    public static final Class<?> clazz$ServerAdvancementManager = requireNonNull(
+//            BukkitReflectionUtils.findReobfOrMojmapClass(
+//                    "server.AdvancementDataWorld",
+//                    "server.ServerAdvancementManager"
+//            )
+//    );
+//
+//    // 1.20.1特有
+//    public static final Class<?> clazz$AdvancementList = MiscUtils.requireNonNullIf(
+//            BukkitReflectionUtils.findReobfOrMojmapClass(
+//                    "advancements.Advancements",
+//                    "advancements.AdvancementList"
+//            ), !VersionHelper.isOrAbove1_20_2()
+//    );
+//
+//    // 1.20.1特有
+//    public static final Field field$AdvancementList$advancements = MiscUtils.requireNonNullIf(
+//            ReflectionUtils.getDeclaredField(clazz$AdvancementList, Map.class, 0),
+//            !VersionHelper.isOrAbove1_20_2()
+//    );
+//
+//    public static final Field field$ServerAdvancementManager$advancements = requireNonNull(
+//            ReflectionUtils.getDeclaredField(clazz$ServerAdvancementManager, VersionHelper.isOrAbove1_20_2() ? Map.class : clazz$AdvancementList, 0)
+//    );
 
     public static final Constructor<?> constructor$AdvancementHolder = Optional.ofNullable(clazz$AdvancementHolder)
             .map(it -> ReflectionUtils.getConstructor(it, clazz$ResourceLocation, clazz$Advancement))
@@ -4472,6 +4567,64 @@ public final class CoreReflections {
                     "world.level.block.FenceGateBlock"
             )
     );
+
+//    public static final Method method$MinecraftServer$getAdvancements = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$MinecraftServer, clazz$ServerAdvancementManager, 0)
+//    );
+//
+//    public static final Class<?> clazz$AdvancementTree = requireNonNull(
+//            ReflectionUtils.getClazz(
+//                    BukkitReflectionUtils.assembleMCClass("advancements.AdvancementTree")
+//            )
+//    );
+//
+//    // 1.20.2+
+//    public static final Class<?> clazz$AdvancementNode = MiscUtils.requireNonNullIf(
+//            ReflectionUtils.getClazz(BukkitReflectionUtils.assembleMCClass("advancements.AdvancementNode")),
+//            VersionHelper.isOrAbove1_20_2()
+//    );
+//
+//    public static final Class<?> clazz$TreeNodePosition = requireNonNull(
+//            ReflectionUtils.getClazz(
+//                    BukkitReflectionUtils.assembleMCClass("advancements.TreeNodePosition")
+//            )
+//    );
+//
+//    public static final Method method$TreeNodePosition$run = requireNonNull(
+//            ReflectionUtils.getStaticMethod(clazz$TreeNodePosition, void.class, clazz$AdvancementNode)
+//    );
+//
+//    public static final Method method$ServerAdvancementManager$tree = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$ServerAdvancementManager, clazz$AdvancementTree, 0)
+//    );
+//
+//    public static final Method method$AdvancementTree$addAll = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$AdvancementTree, void.class, Collection.class)
+//    );
+//
+//    public static final Method method$AdvancementTree$remove = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$AdvancementTree, void.class, Set.class)
+//    );
+//
+//    public static final Method method$AdvancementTree$get = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$AdvancementTree, clazz$AdvancementNode, clazz$ResourceLocation)
+//    );
+//
+//    public static final Method method$AdvancementNode$root = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$AdvancementNode, clazz$AdvancementNode)
+//    );
+//
+//    public static final Method method$AdvancementNode$holder = requireNonNull(
+//            ReflectionUtils.getMethod(clazz$AdvancementNode, clazz$AdvancementHolder)
+//    );
+//
+//    public static final Field field$AdvancementHolder$value = requireNonNull(
+//            ReflectionUtils.getDeclaredField(clazz$AdvancementHolder, clazz$Advancement, 0)
+//    );
+//
+//    public static final Field field$Advancement$display = requireNonNull(
+//            ReflectionUtils.getDeclaredField(clazz$Advancement, Optional.class, 1)
+//    );
 
     public static final Class<?> clazz$GameEvent = requireNonNull(
             ReflectionUtils.getClazz(
@@ -4691,4 +4844,30 @@ public final class CoreReflections {
             ReflectionUtils.unreflectSetter(field$DedicatedServerProperties$enforceSecureProfile)
     ).asType(MethodType.methodType(void.class, Object.class, boolean.class));
 
+    public static final Class<?> clazz$LevelCallback = requireNonNull(
+            ReflectionUtils.getClazz(
+                    BukkitReflectionUtils.assembleMCClass("world.level.entity.LevelCallback")
+            )
+    );
+
+    public static final Class<?> clazz$DataFixers = requireNonNull(
+            BukkitReflectionUtils.findReobfOrMojmapClass(
+                    "util.datafix.DataConverterRegistry",
+                    "util.datafix.DataFixers"
+            )
+    );
+
+    public static final Method method$DataFixers$getDataFixer = requireNonNull(
+            ReflectionUtils.getDeclaredMethod(clazz$DataFixers, DataFixer.class)
+    );
+
+    public static final DataFixer instance$DataFixer;
+
+    static {
+        try {
+            instance$DataFixer = (DataFixer) method$DataFixers$getDataFixer.invoke(null);
+        } catch (ReflectiveOperationException e) {
+            throw new ReflectionInitException("Failed to get DataFixer", e);
+        }
+    }
 }

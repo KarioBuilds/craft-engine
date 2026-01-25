@@ -20,6 +20,7 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
     public static final Serializer<?> SERIALIZER = new Serializer<CustomShapedRecipe<?>>();
     private final ParsedPattern<T> parsedPattern;
     private final Pattern<T> pattern;
+    private final boolean ingredientCountSupport;
 
     public CustomShapedRecipe(Key id,
                               boolean showNotification,
@@ -30,20 +31,32 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
                               Pattern<T> pattern,
                               Function<Context>[] craftingFunctions,
                               Condition<Context> craftingCondition,
-                              boolean alwaysRebuildOutput) {
+                              boolean alwaysRebuildOutput,
+                              boolean ingredientCountSupport) {
         super(id, showNotification, result, visualResult, group, category, craftingFunctions, craftingCondition, alwaysRebuildOutput);
         this.pattern = pattern;
         this.parsedPattern = pattern.parse();
+        this.ingredientCountSupport = ingredientCountSupport;
     }
 
     public ParsedPattern<T> parsedPattern() {
-        return parsedPattern;
+        return this.parsedPattern;
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public boolean matches(RecipeInput input) {
         return this.parsedPattern.matches((CraftingInput<T>) input);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void takeInput(@NotNull RecipeInput input, int ignore) {
+        this.parsedPattern.matchesAndTake((CraftingInput<T>) input, ignore);
+    }
+
+    public boolean ingredientCountSupport() {
+        return this.ingredientCountSupport;
     }
 
     @Override
@@ -57,15 +70,15 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
     }
 
     public Pattern<T> pattern() {
-        return pattern;
+        return this.pattern;
     }
 
     public record Pattern<T>(String[] pattern, Map<Character, Ingredient<T>> ingredients) {
 
         public ParsedPattern<T> parse() {
-                String[] shrunk = shrink(pattern);
+                String[] shrunk = shrink(this.pattern);
                 return new ParsedPattern<>(shrunk[0].length(), shrunk.length,
-                        toIngredientArray(shrunk, ingredients));
+                        toIngredientArray(shrunk, this.ingredients));
         }
     }
 
@@ -128,24 +141,45 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
         }
 
         private boolean matches(CraftingInput<T> input, boolean mirrored) {
-            if (mirrored) {
-                for (int i = 0, size = input.size(); i < size; i++) {
-                    Optional<Ingredient<T>> optional = this.mirroredIngredients[i];
-                    UniqueIdItem<T> itemStack = input.getItem(i);
-                    if (!Ingredient.isInstance(optional, itemStack)) {
-                        return false;
-                    }
-                }
-            } else {
-                for (int i = 0, size = input.size(); i < size; i++) {
-                    Optional<Ingredient<T>> optional = this.ingredients[i];
-                    UniqueIdItem<T> itemStack = input.getItem(i);
-                    if (!Ingredient.isInstance(optional, itemStack)) {
-                        return false;
-                    }
+            Optional<Ingredient<T>>[] ingredients = mirrored ? this.mirroredIngredients : this.ingredients;
+            for (int i = 0, size = input.size(); i < size; i++) {
+                Optional<Ingredient<T>> optional = ingredients[i];
+                UniqueIdItem<T> itemStack = input.getItem(i);
+                if (!Ingredient.isInstance(optional, itemStack)) {
+                    return false;
                 }
             }
             return true;
+        }
+
+        private void takeIngredients(CraftingInput<T> input, boolean mirrored, int left) {
+            Optional<Ingredient<T>>[] ingredients = mirrored ? this.mirroredIngredients : this.ingredients;
+            for (int i = 0, size = input.size(); i < size; i++) {
+                Optional<Ingredient<T>> optional = ingredients[i];
+                UniqueIdItem<T> itemStack = input.getItem(i);
+                if (optional.isPresent() && Ingredient.isInstance(optional, itemStack)) {
+                    int toTake = optional.get().count() - left;
+                    if (toTake > 0) {
+                        itemStack.item().shrink(toTake);
+                    }
+                }
+            }
+        }
+
+        public boolean matchesAndTake(CraftingInput<T> input, int left) {
+            if (input.ingredientCount == this.ingredientCount) {
+                if (input.width == this.width && input.height == this.height) {
+                    if (!this.symmetrical && this.matches(input, true)) {
+                        takeIngredients(input, true, left);
+                        return true;
+                    }
+                    if (this.matches(input, false)) {
+                        takeIngredients(input, false, left);
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private static <T> boolean isSymmetrical(int width, int height, T[] list) {
@@ -180,14 +214,18 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
             }
             Object ingredientObj = getIngredientOrThrow(arguments);
             Map<Character, Ingredient<A>> ingredients = new HashMap<>();
+            boolean hasAdditionalIngredients = false;
             for (Map.Entry<String, Object> entry : ResourceConfigUtils.getAsMap(ingredientObj, "ingredient").entrySet()) {
                 String key = entry.getKey();
                 if (key.length() != 1) {
                     throw new LocalizedResourceConfigException("warning.config.recipe.shaped.invalid_symbol", key);
                 }
                 char ch = key.charAt(0);
-                List<String> items = MiscUtils.getAsStringList(entry.getValue());
-                ingredients.put(ch, toIngredient(items));
+                Ingredient<A> in = parseIngredient(entry.getValue());
+                ingredients.put(ch, in);
+                if (in.count() > 1) {
+                    hasAdditionalIngredients = true;
+                }
             }
             return new CustomShapedRecipe(id,
                     showNotification(arguments),
@@ -197,7 +235,8 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
                     new Pattern<>(pattern.toArray(new String[0]), ingredients),
                     functions(arguments),
                     conditions(arguments),
-                    ResourceConfigUtils.getAsBoolean(arguments.getOrDefault("always-rebuild-result", true), "always-rebuild-result")
+                    ResourceConfigUtils.getAsBoolean(arguments.getOrDefault("always-rebuild-result", true), "always-rebuild-result"),
+                    hasAdditionalIngredients
             );
         }
 
@@ -206,13 +245,14 @@ public class CustomShapedRecipe<T> extends CustomCraftingTableRecipe<T> {
             Map<Character, Ingredient<A>> ingredients = Maps.transformValues(VANILLA_RECIPE_HELPER.shapedIngredientMap(json.getAsJsonObject("key")), this::toIngredient);
             return new CustomShapedRecipe<>(id,
                     true,
-                    parseResult(VANILLA_RECIPE_HELPER.craftingResult(json.getAsJsonObject("result"))),
+                    parseResult(VANILLA_RECIPE_HELPER.craftingResult(json.get("result"))),
                     null,
                     VANILLA_RECIPE_HELPER.readGroup(json),
                     VANILLA_RECIPE_HELPER.craftingCategory(json),
                     new Pattern<>(VANILLA_RECIPE_HELPER.craftingShapedPattern(json), ingredients),
                     null,
                     null,
+                    false,
                     false
             );
         }

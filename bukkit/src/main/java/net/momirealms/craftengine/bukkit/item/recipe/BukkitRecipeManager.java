@@ -13,6 +13,7 @@ import net.momirealms.craftengine.bukkit.plugin.reflection.ReflectionInitExcepti
 import net.momirealms.craftengine.bukkit.plugin.reflection.bukkit.CraftBukkitReflections;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistries;
+import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.core.item.BuildableItem;
 import net.momirealms.craftengine.core.item.Item;
@@ -112,13 +113,13 @@ public class BukkitRecipeManager extends AbstractRecipeManager<ItemStack> {
     );
 
     // nms 模块需要使用此方法
-    public static List<Object> getIngredientLooks(List<UniqueKey> holders) {
+    public static List<Object> getIngredientLooks(Ingredient<ItemStack> ingredient) {
         List<Object> itemStacks = new ArrayList<>();
-        for (UniqueKey holder : holders) {
+        for (UniqueKey holder : ingredient.items()) {
             Optional<? extends BuildableItem<ItemStack>> buildableItem = BukkitItemManager.instance().getBuildableItem(holder.key());
             if (buildableItem.isPresent()) {
-                ItemStack itemStack = buildableItem.get().buildItemStack(ItemBuildContext.empty(), 1);
-                Object nmsStack = FastNMS.INSTANCE.method$CraftItemStack$asNMSCopy(itemStack);
+                ItemStack itemStack = buildableItem.get().buildItemStack(ItemBuildContext.empty(), ingredient.count());
+                Object nmsStack = FastNMS.INSTANCE.field$CraftItemStack$handle(ItemStackUtils.ensureCraftItemStack(itemStack));
                 itemStacks.add(nmsStack);
             } else {
                 Item<ItemStack> barrier = BukkitItemManager.instance().createWrappedItem(ItemKeys.BARRIER, null);
@@ -304,7 +305,7 @@ public class BukkitRecipeManager extends AbstractRecipeManager<ItemStack> {
             try {
                 Recipe<ItemStack> recipe = serializer.readJson(id, jsonObject);
                 markAsDataPackRecipe(id);
-                registerInternalRecipe(id, recipe);
+                registerInternalRecipe(id, recipe, false);
             } catch (Exception e) {
                 this.plugin.logger().warn("Failed to load data pack recipe " + id + ". Json: " + jsonObject, e);
             }
@@ -327,9 +328,10 @@ public class BukkitRecipeManager extends AbstractRecipeManager<ItemStack> {
             Map<Object, Object> scannedResources = (Map<Object, Object>) CoreReflections.methodHandle$FileToIdConverter$listMatchingResources.invokeExact(fileToIdConverter, resourceManager);
             for (Map.Entry<Object, Object> entry : scannedResources.entrySet()) {
                 Key id = extractKeyFromResourceLocation(entry.getKey().toString());
-                Reader reader = (Reader) CoreReflections.methodHandle$Resource$openAsReader.invokeExact(entry.getValue());
-                JsonObject jsonObject = JsonParser.parseReader(reader).getAsJsonObject();
-                recipes.put(id, jsonObject);
+                try (Reader reader = (Reader) CoreReflections.methodHandle$Resource$openAsReader.invokeExact(entry.getValue())) {
+                    JsonObject jsonObject = JsonParser.parseReader(reader).getAsJsonObject();
+                    recipes.put(id, jsonObject);
+                }
             }
         } catch (Throwable e) {
             this.plugin.logger().warn("Unknown error occurred when loading data pack recipes", e);

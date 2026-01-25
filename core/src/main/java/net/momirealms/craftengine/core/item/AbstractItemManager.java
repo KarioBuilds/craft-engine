@@ -369,11 +369,11 @@ public abstract class AbstractItemManager<I> extends AbstractModelGenerator impl
         }
 
         private boolean needsLegacyCompatibility() {
-            return Config.packMinVersion().isBelow(MinecraftVersion.V1_21_4);
+            return Config.packMinVersion().isBelow(MinecraftVersion.V1_21_4) || Config.alwaysGenerateModelOverrides();
         }
 
         private boolean needsCustomModelDataCompatibility() {
-            return Config.packMinVersion().isBelow(MinecraftVersion.V1_21_2);
+            return Config.packMinVersion().isBelow(MinecraftVersion.V1_21_2) || Config.alwaysUseCustomModelData();
         }
 
         private boolean needsItemModelCompatibility() {
@@ -446,16 +446,19 @@ public abstract class AbstractItemManager<I> extends AbstractModelGenerator impl
 
             if (!isVanillaItem) {
                 // 如果用户指定了，说明要手动分配，不管他是什么版本，都强制设置模型值
-                if (section.containsKey("custom-model-data")) {
-                    int customModelData = ResourceConfigUtils.getAsInt(section.getOrDefault("custom-model-data", 0), "custom-model-data");
-                    if (customModelData < 0) {
-                        throw new LocalizedResourceConfigException("warning.config.item.invalid_custom_model_data", String.valueOf(customModelData));
+                Object rawCustomModelData = section.get("custom-model-data");
+                if (rawCustomModelData != null) {
+                    int customModelData = ResourceConfigUtils.getAsInt(rawCustomModelData, "custom-model-data");
+                    if (customModelData > 0) {
+                        if (customModelData > 16_777_216) {
+                            throw new LocalizedResourceConfigException("warning.config.item.bad_custom_model_data", String.valueOf(customModelData));
+                        }
+                        forceCustomModelData = true;
+                        customModelDataFuture = getOrCreateIdAllocator(clientBoundMaterial).assignFixedId(id.asString(), customModelData);
+                    } else {
+                        forceCustomModelData = false;
+                        customModelDataFuture = CompletableFuture.completedFuture(0);
                     }
-                    if (customModelData > 16_777_216) {
-                        throw new LocalizedResourceConfigException("warning.config.item.bad_custom_model_data", String.valueOf(customModelData));
-                    }
-                    customModelDataFuture = getOrCreateIdAllocator(clientBoundMaterial).assignFixedId(id.asString(), customModelData);
-                    forceCustomModelData = true;
                 }
                 // 用户没指定custom-model-data，则看当前资源包版本兼容需求
                 else {
@@ -522,7 +525,6 @@ public abstract class AbstractItemManager<I> extends AbstractModelGenerator impl
 
                 CustomItem.Builder<I> itemBuilder = createPlatformItemBuilder(uniqueId, material, clientBoundMaterial);
 
-
                 // 对于不重要的配置，可以仅警告，不返回
                 ExceptionCollector<LocalizedResourceConfigException> collector = new ExceptionCollector<>();
 
@@ -587,7 +589,7 @@ public abstract class AbstractItemManager<I> extends AbstractModelGenerator impl
 
                 // 应用物品数据
                 try {
-                    ItemProcessors.applyDataModifiers(MiscUtils.castToMap(section.get("data"), true), itemBuilder::dataModifier);
+                    ItemProcessors.collectProcessors(MiscUtils.castToMap(section.get("data"), true), itemBuilder::dataModifier);
                 } catch (LocalizedResourceConfigException e) {
                     collector.add(e);
                 }
@@ -595,7 +597,7 @@ public abstract class AbstractItemManager<I> extends AbstractModelGenerator impl
                 // 应用客户端侧数据
                 try {
                     if (VersionHelper.PREMIUM) {
-                        ItemProcessors.applyDataModifiers(MiscUtils.castToMap(section.get("client-bound-data"), true), itemBuilder::clientBoundDataModifier);
+                        ItemProcessors.collectProcessors(MiscUtils.castToMap(section.get("client-bound-data"), true), itemBuilder::clientBoundDataModifier);
                     }
                 } catch (LocalizedResourceConfigException e) {
                     collector.add(e);
@@ -619,7 +621,13 @@ public abstract class AbstractItemManager<I> extends AbstractModelGenerator impl
                 try {
                     settings = Optional.ofNullable(ResourceConfigUtils.get(section, "settings"))
                             .map(map -> ItemSettings.fromMap(MiscUtils.castToMap(map, true)))
-                            .map(it -> isVanillaItem ? it.disableVanillaBehavior(false) : it)
+                            .map(it -> {
+                                if (isVanillaItem) {
+                                    it.disableVanillaBehavior(false);
+                                    it.triggerAdvancement(true);
+                                }
+                                return it;
+                            })
                             .orElse(ItemSettings.of().disableVanillaBehavior(!isVanillaItem));
                 } catch (LocalizedResourceConfigException e) {
                     collector.add(e);

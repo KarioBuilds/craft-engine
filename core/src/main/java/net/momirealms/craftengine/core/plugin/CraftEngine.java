@@ -3,6 +3,8 @@ package net.momirealms.craftengine.core.plugin;
 import com.google.gson.JsonObject;
 import net.momirealms.craftengine.core.advancement.AdvancementManager;
 import net.momirealms.craftengine.core.block.BlockManager;
+import net.momirealms.craftengine.core.entity.culling.EntityCullingManager;
+import net.momirealms.craftengine.core.entity.culling.EntityCullingManagerImpl;
 import net.momirealms.craftengine.core.entity.furniture.FurnitureManager;
 import net.momirealms.craftengine.core.entity.projectile.ProjectileManager;
 import net.momirealms.craftengine.core.entity.seat.SeatManager;
@@ -12,7 +14,7 @@ import net.momirealms.craftengine.core.item.recipe.RecipeManager;
 import net.momirealms.craftengine.core.item.recipe.network.legacy.LegacyRecipeTypes;
 import net.momirealms.craftengine.core.item.recipe.network.modern.display.RecipeDisplayTypes;
 import net.momirealms.craftengine.core.item.recipe.network.modern.display.slot.SlotDisplayTypes;
-import net.momirealms.craftengine.core.loot.VanillaLootManager;
+import net.momirealms.craftengine.core.loot.LootManager;
 import net.momirealms.craftengine.core.pack.LoadingSequence;
 import net.momirealms.craftengine.core.pack.PackManager;
 import net.momirealms.craftengine.core.plugin.classpath.ClassPathAppender;
@@ -21,14 +23,13 @@ import net.momirealms.craftengine.core.plugin.command.sender.SenderFactory;
 import net.momirealms.craftengine.core.plugin.compatibility.CompatibilityManager;
 import net.momirealms.craftengine.core.plugin.compatibility.PluginTaskRegistry;
 import net.momirealms.craftengine.core.plugin.config.Config;
+import net.momirealms.craftengine.core.plugin.config.ConfigParser;
 import net.momirealms.craftengine.core.plugin.config.template.TemplateManager;
 import net.momirealms.craftengine.core.plugin.context.GlobalVariableManager;
 import net.momirealms.craftengine.core.plugin.dependency.Dependencies;
 import net.momirealms.craftengine.core.plugin.dependency.Dependency;
 import net.momirealms.craftengine.core.plugin.dependency.DependencyManager;
 import net.momirealms.craftengine.core.plugin.dependency.DependencyManagerImpl;
-import net.momirealms.craftengine.core.plugin.entityculling.EntityCullingManager;
-import net.momirealms.craftengine.core.plugin.entityculling.EntityCullingManagerImpl;
 import net.momirealms.craftengine.core.plugin.gui.GuiManager;
 import net.momirealms.craftengine.core.plugin.gui.category.ItemBrowserManager;
 import net.momirealms.craftengine.core.plugin.gui.category.ItemBrowserManagerImpl;
@@ -48,6 +49,7 @@ import net.momirealms.craftengine.core.world.score.TeamManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.BufferedReader;
@@ -61,6 +63,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 public abstract class CraftEngine implements Plugin {
     private static CraftEngine instance;
@@ -86,7 +89,7 @@ public abstract class CraftEngine implements Plugin {
     protected ItemBrowserManager itemBrowserManager;
     protected GuiManager guiManager;
     protected SoundManager soundManager;
-    protected VanillaLootManager vanillaLootManager;
+    protected LootManager lootManager;
     protected AdvancementManager advancementManager;
     protected CompatibilityManager compatibilityManager;
     protected GlobalVariableManager globalVariableManager;
@@ -169,13 +172,13 @@ public abstract class CraftEngine implements Plugin {
         this.itemBrowserManager.reload();
         this.blockManager.reload();
         this.worldManager.reload();
-        this.vanillaLootManager.reload();
+        this.lootManager.reload();
         this.guiManager.reload();
         this.packManager.reload();
         this.advancementManager.reload();
         this.projectileManager.reload();
         this.seatManager.reload();
-        this.entityCullingManager.reload();
+        this.networkManager.reload();
     }
 
     private void runDelayTasks(boolean reloadRecipe) {
@@ -194,6 +197,10 @@ public abstract class CraftEngine implements Plugin {
         delayedLoadTasks.add(CompletableFuture.runAsync(() -> this.fontManager.delayedLoad(), this.scheduler.async()));
         // 指令补全
         delayedLoadTasks.add(CompletableFuture.runAsync(() -> this.soundManager.delayedLoad(), this.scheduler.async()));
+        // 进度
+        delayedLoadTasks.add(CompletableFuture.runAsync(() -> this.advancementManager.delayedLoad(), this.scheduler.async()));
+        // 战利品
+        delayedLoadTasks.add(CompletableFuture.runAsync(() -> this.lootManager.delayedLoad(), this.scheduler.async()));
         // 如果重载配方
         if (reloadRecipe) {
             // 转换数据包配方
@@ -226,7 +233,8 @@ public abstract class CraftEngine implements Plugin {
                     // 加载全部配置资源
                     this.packManager.loadPacks();
                     this.packManager.updateCachedConfigFiles();
-                    this.packManager.loadResources(reloadRecipe ? (p) -> true : (p) -> p.loadingSequence() != LoadingSequence.RECIPE);
+                    Predicate<ConfigParser> predicate = getConfigParserPredicate(reloadRecipe);
+                    this.packManager.loadResources(predicate);
                     this.packManager.clearResourceConfigs();
                 } catch (Exception e) {
                     this.logger().warn("Failed to load resources folder", e);
@@ -248,6 +256,8 @@ public abstract class CraftEngine implements Plugin {
                         if (reloadRecipe) {
                             this.recipeManager.runDelayedSyncTasks();
                         }
+                        // 同步修改进度
+                        this.advancementManager.runDelayedSyncTasks();
                         long time4 = System.currentTimeMillis();
                         long syncTime = time4 - time3;
                         this.reloadEventDispatcher.accept(this);
@@ -259,6 +269,16 @@ public abstract class CraftEngine implements Plugin {
             }
         });
         return future;
+    }
+
+    private static @NotNull Predicate<ConfigParser> getConfigParserPredicate(boolean reloadRecipe) {
+        Predicate<ConfigParser> predicate;
+        if (reloadRecipe) {
+            predicate = (p) -> true;
+        } else {
+            predicate = (p) -> p.loadingSequence() != LoadingSequence.RECIPE;
+        }
+        return predicate;
     }
 
     protected void onPluginEnable() {
@@ -281,9 +301,11 @@ public abstract class CraftEngine implements Plugin {
         // 注册聊天监听器
         this.fontManager.delayedInit();
         // 注册实体死亡监听器
-        this.vanillaLootManager.delayedInit();
+        this.lootManager.delayedInit();
         // 注册脱离坐骑监听器
         this.seatManager.delayedInit();
+        // 加载实体剔除线程
+        this.entityCullingManager.load();
 
         if (!Config.delayConfigurationLoad()) {
             // 注册世界加载相关监听器
@@ -299,7 +321,7 @@ public abstract class CraftEngine implements Plugin {
             // 加载packs
             this.packManager.loadPacks();
             this.packManager.updateCachedConfigFiles();
-            // 不要加载配方
+            // 不要加载配方和进度
             this.packManager.loadResources((p) -> p.loadingSequence() != LoadingSequence.RECIPE);
             this.runDelayTasks(false);
         }
@@ -440,7 +462,7 @@ public abstract class CraftEngine implements Plugin {
         if (this.itemBrowserManager != null) this.itemBrowserManager.disable();
         if (this.guiManager != null) this.guiManager.disable();
         if (this.soundManager != null) this.soundManager.disable();
-        if (this.vanillaLootManager != null) this.vanillaLootManager.disable();
+        if (this.lootManager != null) this.lootManager.disable();
         if (this.seatManager != null) this.seatManager.disable();
         if (this.translationManager != null) this.translationManager.disable();
         if (this.globalVariableManager != null) this.globalVariableManager.disable();
@@ -475,11 +497,13 @@ public abstract class CraftEngine implements Plugin {
         // register sound parser
         this.packManager.registerConfigSectionParsers(this.soundManager.parsers());
         // register vanilla loot parser
-        this.packManager.registerConfigSectionParser(this.vanillaLootManager.parser());
+        this.packManager.registerConfigSectionParser(this.lootManager.parser());
         // register advancement parser
         this.packManager.registerConfigSectionParser(this.advancementManager.parser());
         // register skip-optimization parser
         this.packManager.registerConfigSectionParser(this.packManager.parser());
+        // register feature parser
+        this.packManager.registerConfigSectionParsers(this.worldManager.parsers());
     }
 
     public void applyDependencies() {
@@ -640,8 +664,8 @@ public abstract class CraftEngine implements Plugin {
     }
 
     @Override
-    public VanillaLootManager vanillaLootManager() {
-        return vanillaLootManager;
+    public LootManager vanillaLootManager() {
+        return lootManager;
     }
 
     @Override

@@ -2,6 +2,7 @@ package net.momirealms.craftengine.bukkit.entity;
 
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.nms.FastNMS;
+import net.momirealms.craftengine.bukkit.util.DirectionUtils;
 import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.entity.AbstractEntity;
@@ -10,6 +11,7 @@ import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.WorldPosition;
+import org.bukkit.entity.Entity;
 
 import java.lang.ref.WeakReference;
 import java.util.UUID;
@@ -67,7 +69,7 @@ public class BukkitEntity extends AbstractEntity {
 
     @Override
     public Direction getDirection() {
-        return Direction.NORTH;
+        return DirectionUtils.toDirection(platformEntity().getFacing());
     }
 
     @Override
@@ -87,7 +89,9 @@ public class BukkitEntity extends AbstractEntity {
 
     @Override
     public boolean isValid() {
-        return platformEntity().isValid();
+        Entity bkEntity = platformEntity();
+        if (bkEntity == null) return false;
+        return bkEntity.isValid();
     }
 
     @Override

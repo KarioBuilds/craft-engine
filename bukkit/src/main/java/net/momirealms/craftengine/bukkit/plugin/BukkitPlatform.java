@@ -31,6 +31,11 @@ public class BukkitPlatform implements Platform {
     }
 
     @Override
+    public boolean isStopping() {
+        return Bukkit.isStopping();
+    }
+
+    @Override
     public Tag jsonToSparrowNBT(JsonElement json) {
         return MRegistryOps.JSON.convertTo(MRegistryOps.SPARROW_NBT, json);
     }

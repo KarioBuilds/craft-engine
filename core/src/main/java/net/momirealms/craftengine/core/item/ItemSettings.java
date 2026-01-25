@@ -24,7 +24,7 @@ import org.joml.Vector3f;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class ItemSettings {
+public final class ItemSettings {
     int fuelTime;
     Set<Key> tags = Set.of();
     Repairable repairable = Repairable.UNDEFINED;
@@ -54,35 +54,51 @@ public class ItemSettings {
     String dropDisplay = Config.defaultDropDisplayFormat();
     @Nullable
     LegacyChatFormatter glowColor = null;
-    Map<CustomDataType<?>, Object> customData = new IdentityHashMap<>(4);
+    Map<CustomItemSettingType<?>, Object> customData = new IdentityHashMap<>(4);
+    boolean triggerAdvancement = false;
 
     private ItemSettings() {}
 
-    public List<ItemProcessor> modifiers() {
-        ArrayList<ItemProcessor> modifiers = new ArrayList<>();
+    @SuppressWarnings("unchecked")
+    public List<ItemProcessor> processors() {
+        ArrayList<ItemProcessor> processors = new ArrayList<>();
         if (this.equipment != null) {
             EquipmentData data = this.equipment.equipmentData();
             if (data != null) {
-                modifiers.add(new EquippableProcessor(data));
+                data.setAssetId(null);
+                processors.add(new EquippableProcessor(data));
             }
             if (!this.equipment.clientBoundModel().asBoolean(Config.globalClientboundModel())) {
-                modifiers.addAll(this.equipment.equipment().modifiers());
+                processors.addAll(this.equipment.equipment().modifiers());
             }
         }
         if (VersionHelper.isOrAbove1_20_5() && this.foodData != null) {
-            modifiers.add(new FoodProcessor(this.foodData.nutrition(), this.foodData.saturation(), false));
+            processors.add(new FoodProcessor(this.foodData.nutrition(), this.foodData.saturation(), false));
         }
-        return modifiers;
+        for (Map.Entry<CustomItemSettingType<?>, Object> entry : this.customData.entrySet()) {
+            CustomItemSettingType<Object> type = (CustomItemSettingType<Object>) entry.getKey();
+            Optional.ofNullable(type.dataProcessor()).ifPresent(it -> {
+                it.accept(entry.getValue(), processors::add);
+            });
+        }
+        return processors;
     }
 
-    public List<ItemProcessor> clientBoundModifiers() {
-        ArrayList<ItemProcessor> modifiers = new ArrayList<>();
+    @SuppressWarnings("unchecked")
+    public List<ItemProcessor> clientBoundProcessors() {
+        ArrayList<ItemProcessor> processors = new ArrayList<>();
         if (this.equipment != null) {
             if (this.equipment.clientBoundModel().asBoolean(Config.globalClientboundModel())) {
-                modifiers.addAll(this.equipment.equipment().modifiers());
+                processors.addAll(this.equipment.equipment().modifiers());
             }
         }
-        return modifiers;
+        for (Map.Entry<CustomItemSettingType<?>, Object> entry : this.customData.entrySet()) {
+            CustomItemSettingType<Object> type = (CustomItemSettingType<Object>) entry.getKey();
+            Optional.ofNullable(type.clientBoundDataProcessor()).ifPresent(it -> {
+                it.accept(entry.getValue(), processors::add);
+            });
+        }
+        return processors;
     }
 
     public static ItemSettings of() {
@@ -120,6 +136,7 @@ public class ItemSettings {
         newSettings.destroyOnDeathChance = settings.destroyOnDeathChance;
         newSettings.glowColor = settings.glowColor;
         newSettings.dropDisplay = settings.dropDisplay;
+        newSettings.triggerAdvancement = settings.triggerAdvancement;
         newSettings.customData = new IdentityHashMap<>(settings.customData);
         return newSettings;
     }
@@ -137,7 +154,7 @@ public class ItemSettings {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T getCustomData(CustomDataType<T> type) {
+    public <T> T getCustomData(CustomItemSettingType<T> type) {
         return (T) this.customData.get(type);
     }
 
@@ -147,11 +164,11 @@ public class ItemSettings {
 
     @Nullable
     @SuppressWarnings("unchecked")
-    public <T> T removeCustomData(CustomDataType<?> type) {
+    public <T> T removeCustomData(CustomItemSettingType<?> type) {
         return (T) this.customData.remove(type);
     }
 
-    public <T> void addCustomData(CustomDataType<T> key, T value) {
+    public <T> void addCustomData(CustomItemSettingType<T> key, T value) {
         this.customData.put(key, value);
     }
 
@@ -236,6 +253,10 @@ public class ItemSettings {
 
     public List<DamageSource> invulnerable() {
         return this.invulnerable;
+    }
+
+    public boolean triggerAdvancement() {
+        return triggerAdvancement;
     }
 
     public float compostProbability() {
@@ -380,6 +401,11 @@ public class ItemSettings {
         return this;
     }
 
+    public ItemSettings triggerAdvancement(boolean triggerAdvancement) {
+        this.triggerAdvancement = triggerAdvancement;
+        return this;
+    }
+
     @FunctionalInterface
     public interface Modifier {
 
@@ -505,6 +531,10 @@ public class ItemSettings {
             registerFactory("can-place", (value -> {
                 boolean bool = ResourceConfigUtils.getAsBoolean(value, "can-place");
                 return settings -> settings.disableVanillaBehavior(!bool);
+            }));
+            registerFactory("trigger-advancement", (value -> {
+                boolean bool = ResourceConfigUtils.getAsBoolean(value, "trigger-advancement");
+                return settings -> settings.triggerAdvancement(bool);
             }));
             registerFactory("disable-vanilla-behavior", (value -> {
                 boolean bool = ResourceConfigUtils.getAsBoolean(value, "disable-vanilla-behavior");

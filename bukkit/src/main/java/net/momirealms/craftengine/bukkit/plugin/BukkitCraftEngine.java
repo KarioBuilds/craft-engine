@@ -15,7 +15,7 @@ import net.momirealms.craftengine.bukkit.font.BukkitFontManager;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.item.behavior.BukkitItemBehaviors;
 import net.momirealms.craftengine.bukkit.item.recipe.BukkitRecipeManager;
-import net.momirealms.craftengine.bukkit.loot.BukkitVanillaLootManager;
+import net.momirealms.craftengine.bukkit.loot.BukkitLootManager;
 import net.momirealms.craftengine.bukkit.pack.BukkitPackManager;
 import net.momirealms.craftengine.bukkit.plugin.command.BukkitCommandManager;
 import net.momirealms.craftengine.bukkit.plugin.command.BukkitSenderFactory;
@@ -61,7 +61,7 @@ import java.util.List;
 import java.util.Objects;
 
 @SuppressWarnings("unchecked")
-public class BukkitCraftEngine extends CraftEngine {
+public final class BukkitCraftEngine extends CraftEngine {
     private static final String COMPATIBILITY_CLASS = "net.momirealms.craftengine.bukkit.compatibility.BukkitCompatibilityManager";
     private static BukkitCraftEngine instance;
     private SchedulerTask tickTask;
@@ -71,13 +71,13 @@ public class BukkitCraftEngine extends CraftEngine {
     private JavaPlugin javaPlugin;
     private final Path dataFolderPath;
 
-    protected BukkitCraftEngine(JavaPlugin plugin) {
+    BukkitCraftEngine(JavaPlugin plugin) {
         this(new JavaPluginLogger(plugin.getLogger()), plugin.getDataFolder().toPath().toAbsolutePath(),
                 new ReflectionClassPathAppender(plugin.getClass().getClassLoader()), new ReflectionClassPathAppender(plugin.getClass().getClassLoader()));
         this.setJavaPlugin(plugin);
     }
 
-    protected BukkitCraftEngine(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
+    BukkitCraftEngine(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         super((p) -> {
             CraftEngineReloadEvent event = new CraftEngineReloadEvent((BukkitCraftEngine) p);
             EventUtils.fireAndForget(event);
@@ -99,7 +99,7 @@ public class BukkitCraftEngine extends CraftEngine {
         }
     }
 
-    protected void setJavaPlugin(JavaPlugin javaPlugin) {
+    void setJavaPlugin(JavaPlugin javaPlugin) {
         this.javaPlugin = javaPlugin;
     }
 
@@ -182,7 +182,7 @@ public class BukkitCraftEngine extends CraftEngine {
         // 初始化声音管理器
         super.soundManager = new BukkitSoundManager(this);
         // 初始化战利品管理器
-        super.vanillaLootManager = new BukkitVanillaLootManager(this);
+        super.lootManager = new BukkitLootManager(this);
         // 初始化字体管理器
         super.fontManager = new BukkitFontManager(this);
         // 初始化进度管理器
@@ -346,11 +346,6 @@ public class BukkitCraftEngine extends CraftEngine {
     @Override
     public BukkitFurnitureManager furnitureManager() {
         return (BukkitFurnitureManager) furnitureManager;
-    }
-
-    @Override
-    public CompatibilityManager compatibilityManager() {
-        return compatibilityManager;
     }
 
     @Override

@@ -13,6 +13,7 @@ import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityEl
 import net.momirealms.craftengine.core.block.parser.BlockNbtParser;
 import net.momirealms.craftengine.core.block.properties.Properties;
 import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.entity.culling.CullingData;
 import net.momirealms.craftengine.core.loot.LootTable;
 import net.momirealms.craftengine.core.pack.LoadingSequence;
 import net.momirealms.craftengine.core.pack.Pack;
@@ -32,7 +33,6 @@ import net.momirealms.craftengine.core.plugin.context.CommonFunctions;
 import net.momirealms.craftengine.core.plugin.context.Context;
 import net.momirealms.craftengine.core.plugin.context.EventTrigger;
 import net.momirealms.craftengine.core.plugin.context.function.Function;
-import net.momirealms.craftengine.core.plugin.entityculling.CullingData;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedException;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedResourceConfigException;
 import net.momirealms.craftengine.core.plugin.logger.Debugger;
@@ -174,7 +174,7 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
         return this.blockStateArranger;
     }
 
-    protected abstract void applyPlatformSettings(ImmutableBlockState state);
+    protected abstract void applyPlatformSettings(CustomBlock block, ImmutableBlockState state);
 
     @Override
     public ConfigParser[] parsers() {
@@ -623,7 +623,7 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
                         }
                         BlockStateAppearance blockStateAppearance = new BlockStateAppearance(
                                 visualBlockState,
-                                parseBlockEntityRender(appearanceSection.get("entity-renderer")),
+                                parseBlockEntityRender(ResourceConfigUtils.get(appearanceSection, "entity-renderer", "entity-render")),
                                 parseCullingData(appearanceSection.get("entity-culling"))
                         );
                         appearances.put(appearanceName, blockStateAppearance);
@@ -698,7 +698,7 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
                         AbstractBlockManager.this.appearanceToRealState.computeIfAbsent(appearanceId, k -> new IntArrayList()).add(internalId);
                         AbstractBlockManager.this.tempVisualBlockStatesInUse.add(visualState);
                         AbstractBlockManager.this.tempVisualBlocksInUse.add(getBlockOwnerId(visualState));
-                        AbstractBlockManager.this.applyPlatformSettings(state);
+                        AbstractBlockManager.this.applyPlatformSettings(customBlock, state);
                         // generate mod assets
                         if (Config.generateModAssets()) {
                             AbstractBlockManager.this.modBlockStateOverrides.put(BlockManager.createCustomBlockKey(index), Optional.ofNullable(AbstractBlockManager.this.tempVanillaBlockStateModels[appearanceId])
