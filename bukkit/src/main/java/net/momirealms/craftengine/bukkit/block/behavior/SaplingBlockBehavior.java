@@ -2,14 +2,10 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistries;
-import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
-import net.momirealms.craftengine.bukkit.util.FeatureUtils;
-import net.momirealms.craftengine.bukkit.util.LocationUtils;
-import net.momirealms.craftengine.bukkit.util.ParticleUtils;
+import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -25,9 +21,23 @@ import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.ResourceConfigUtils;
+import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.util.random.RandomUtils;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
+import net.momirealms.craftengine.proxy.minecraft.core.HolderProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.RegistryAccessProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.RegistryProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.Vec3iProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelReaderProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.BonemealableBlockProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.feature.ConfiguredFeatureProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidStateProxy;
 import org.bukkit.Location;
 import org.bukkit.World;
 
@@ -56,57 +66,63 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void randomTick(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public void randomTick(Object thisBlock, Object[] args, Callable<Object> superMethod) {
         Object world = args[1];
         Object blockPos = args[2];
         Object blockState = args[0];
         Object aboveBlockPos = LocationUtils.above(blockPos);
-        if ((int) CoreReflections.method$LevelReader$getMaxLocalRawBrightness.invoke(world, aboveBlockPos) >= 9 && RandomUtils.generateRandomFloat(0, 1) < this.growSpeed) {
+        if (LevelReaderProxy.INSTANCE.getMaxLocalRawBrightness(world, aboveBlockPos) >= 9 && RandomUtils.generateRandomFloat(0, 1) < this.growSpeed) {
             increaseStage(world, blockPos, blockState, args[3]);
         }
     }
 
-    private void increaseStage(Object world, Object blockPos, Object blockState, Object randomSource) throws Exception {
+    private void increaseStage(Object world, Object blockPos, Object blockState, Object randomSource) {
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
         if (optionalCustomState.isEmpty()) return;
         ImmutableBlockState customState = optionalCustomState.get();
         int currentStage = customState.get(this.stageProperty);
         if (currentStage != this.stageProperty.max) {
             ImmutableBlockState nextStage = customState.cycle(this.stageProperty);
-            World bukkitWorld = FastNMS.INSTANCE.method$Level$getCraftWorld(world);
-            int x = FastNMS.INSTANCE.field$Vec3i$x(blockPos);
-            int y = FastNMS.INSTANCE.field$Vec3i$y(blockPos);
-            int z = FastNMS.INSTANCE.field$Vec3i$z(blockPos);
+            World bukkitWorld = LevelProxy.INSTANCE.getWorld(world);
+            int x = Vec3iProxy.INSTANCE.getX(blockPos);
+            int y = Vec3iProxy.INSTANCE.getY(blockPos);
+            int z = Vec3iProxy.INSTANCE.getZ(blockPos);
             CraftEngineBlocks.place(new Location(bukkitWorld, x, y, z), nextStage, UpdateOption.UPDATE_NONE, false);
         } else {
             generateTree(world, blockPos, blockState, randomSource);
         }
     }
 
-    private void generateTree(Object world, Object blockPos, Object blockState, Object randomSource) throws Exception {
+    private void generateTree(Object world, Object blockPos, Object blockState, Object randomSource) {
         Object holder = BukkitWorldManager.instance().configuredFeatureById(treeFeature());
         if (holder == null) {
-            Object registry = FastNMS.INSTANCE.method$RegistryAccess$lookupOrThrow(FastNMS.INSTANCE.registryAccess(), MRegistries.CONFIGURED_FEATURE);
+            Object registryAccess = RegistryUtils.getRegistryAccess();
+            Object registry = RegistryAccessProxy.INSTANCE.lookupOrThrow(registryAccess, MRegistries.CONFIGURED_FEATURE);
             if (registry == null) return;
-            Optional<Object> optionalHolder = FastNMS.INSTANCE.method$Registry$getHolderByResourceKey(registry, FeatureUtils.createConfiguredFeatureKey(treeFeature()));
+            Optional<Object> optionalHolder;
+            if (VersionHelper.isOrAbove1_21_2()) {
+                optionalHolder = RegistryProxy.INSTANCE.get$1(registry, FeatureUtils.createConfiguredFeatureKey(treeFeature()));
+            } else {
+                optionalHolder = RegistryProxy.INSTANCE.getHolder$1(registry, FeatureUtils.createConfiguredFeatureKey(treeFeature()));
+            }
             if (optionalHolder.isEmpty()) {
                 CraftEngine.instance().logger().warn("Configured feature not found: " + treeFeature());
                 return;
             }
             holder = optionalHolder.get();
         }
-        Object chunkGenerator = CoreReflections.method$ServerChunkCache$getGenerator.invoke(FastNMS.INSTANCE.method$ServerLevel$getChunkSource(world));
-        Object configuredFeature = FastNMS.INSTANCE.method$Holder$value(holder);
-        Object fluidState = FastNMS.INSTANCE.method$BlockGetter$getFluidState(world, blockPos);
-        Object legacyState = CoreReflections.method$FluidState$createLegacyBlock.invoke(fluidState);
-        FastNMS.INSTANCE.method$LevelWriter$setBlock(world, blockPos, legacyState, UpdateOption.UPDATE_NONE.flags());
-        if ((boolean) CoreReflections.method$ConfiguredFeature$place.invoke(configuredFeature, world, chunkGenerator, randomSource, blockPos)) {
-            if (FastNMS.INSTANCE.method$BlockGetter$getBlockState(world, blockPos) == legacyState) {
-                CoreReflections.method$ServerLevel$sendBlockUpdated.invoke(world, blockPos, blockState, legacyState, 2);
+        Object chunkGenerator = ServerChunkCacheProxy.INSTANCE.getGenerator(ServerLevelProxy.INSTANCE.getChunkSource(world));
+        Object configuredFeature = HolderProxy.INSTANCE.value(holder);
+        Object fluidState = BlockGetterProxy.INSTANCE.getFluidState(world, blockPos);
+        Object legacyState = FluidStateProxy.INSTANCE.createLegacyBlock(fluidState);
+        LevelWriterProxy.INSTANCE.setBlock(world, blockPos, legacyState, UpdateOption.UPDATE_NONE.flags());
+        if (ConfiguredFeatureProxy.INSTANCE.place(configuredFeature, world, chunkGenerator, randomSource, blockPos)) {
+            if (BlockGetterProxy.INSTANCE.getBlockState(world, blockPos) == legacyState) {
+                ServerLevelProxy.INSTANCE.sendBlockUpdated(world, blockPos, blockState, legacyState, UpdateOption.Flags.UPDATE_CLIENTS);
             }
         } else {
             // failed to place, rollback changes
-            FastNMS.INSTANCE.method$LevelWriter$setBlock(world, blockPos, blockState, UpdateOption.UPDATE_NONE.flags());
+            LevelWriterProxy.INSTANCE.setBlock(world, blockPos, blockState, UpdateOption.UPDATE_NONE.flags());
         }
     }
 
@@ -125,7 +141,12 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
         Object visualState = customState.visualBlockState().literalObject();
         Object visualStateBlock = BlockStateUtils.getBlockOwner(visualState);
         if (CoreReflections.clazz$BonemealableBlock.isInstance(visualStateBlock)) {
-            boolean is = FastNMS.INSTANCE.method$BonemealableBlock$isValidBonemealTarget(visualStateBlock, level, blockPos, visualState);
+            boolean is;
+            if (VersionHelper.isOrAbove1_20_2()) {
+                is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, level, blockPos, visualState);
+            } else {
+                is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, level, blockPos, visualState, true);
+            }
             if (!is) {
                 sendParticles = true;
             }
@@ -133,10 +154,10 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
             sendParticles = true;
         }
         if (sendParticles) {
-            World world = FastNMS.INSTANCE.method$Level$getCraftWorld(level);
-            int x = FastNMS.INSTANCE.field$Vec3i$x(blockPos);
-            int y = FastNMS.INSTANCE.field$Vec3i$y(blockPos);
-            int z = FastNMS.INSTANCE.field$Vec3i$z(blockPos);
+            World world = LevelProxy.INSTANCE.getWorld(level);
+            int x = Vec3iProxy.INSTANCE.getX(blockPos);
+            int y = Vec3iProxy.INSTANCE.getY(blockPos);
+            int z = Vec3iProxy.INSTANCE.getZ(blockPos);
             world.spawnParticle(ParticleUtils.HAPPY_VILLAGER, x + 0.5, y + 0.5, z + 0.5, 15, 0.25, 0.25, 0.25);
         }
         return success;
@@ -148,7 +169,7 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void performBoneMeal(Object thisBlock, Object[] args) throws Exception {
+    public void performBoneMeal(Object thisBlock, Object[] args) {
         this.increaseStage(args[0], args[2], args[3], args[1]);
     }
 
@@ -169,7 +190,12 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
         Object visualState = state.visualBlockState().literalObject();
         Object visualStateBlock = BlockStateUtils.getBlockOwner(visualState);
         if (CoreReflections.clazz$BonemealableBlock.isInstance(visualStateBlock)) {
-            boolean is = FastNMS.INSTANCE.method$BonemealableBlock$isValidBonemealTarget(visualStateBlock, world.serverWorld(), LocationUtils.toBlockPos(pos), visualState);
+            boolean is;
+            if (VersionHelper.isOrAbove1_20_2()) {
+                is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, world.serverWorld(), LocationUtils.toBlockPos(pos), visualState);
+            } else {
+                is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, world.serverWorld(), LocationUtils.toBlockPos(pos), visualState, true);
+            }
             if (!is) {
                 sendSwing = true;
             }

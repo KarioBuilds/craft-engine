@@ -10,6 +10,7 @@ import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBuiltInReg
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
 import net.momirealms.craftengine.bukkit.util.EnchantmentUtils;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
+import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.core.attribute.AttributeModifier;
 import net.momirealms.craftengine.core.item.DataComponentKeys;
 import net.momirealms.craftengine.core.item.ItemType;
@@ -18,6 +19,10 @@ import net.momirealms.craftengine.core.item.data.FireworkExplosion;
 import net.momirealms.craftengine.core.item.data.Trim;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.util.*;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.item.component.CustomDataProxy;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.Tag;
@@ -78,16 +83,16 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
     protected Object getExactTag(ComponentItemWrapper item, Object... path) {
         Object customData = getExactComponent(item, DataComponentTypes.CUSTOM_DATA);
         if (customData == null) return null;
-        Object currentTag = FastNMS.INSTANCE.method$CustomData$getUnsafe(customData);
+        Object currentTag = CustomDataProxy.INSTANCE.getTag(customData);
         for (int i = 0; i < path.length; i++) {
             Object pathSegment = path[i];
             if (pathSegment == null) return null;
-            currentTag = FastNMS.INSTANCE.method$CompoundTag$get(currentTag, path[i].toString());
+            currentTag = CompoundTagProxy.INSTANCE.get(currentTag, path[i].toString());
             if (currentTag == null) return null;
             if (i == path.length - 1) {
                 return currentTag;
             }
-            if (!CoreReflections.clazz$CompoundTag.isInstance(currentTag)) {
+            if (!CompoundTagProxy.CLASS.isInstance(currentTag)) {
                 return null;
             }
         }
@@ -431,15 +436,10 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
     protected Optional<Enchantment> getEnchantment(ComponentItemWrapper item, Key key) {
         Object enchant = item.getExactComponent(DataComponentTypes.ENCHANTMENTS);
         if (enchant == null) return Optional.empty();
-        try {
-            Map<String, Integer> map = EnchantmentUtils.toMap(enchant);
-            Integer level = map.get(key.toString());
-            if (level == null) return Optional.empty();
-            return Optional.of(new Enchantment(key, level));
-        } catch (ReflectiveOperationException e) {
-            plugin.logger().warn("Failed to get enchantment " + key, e);
-            return Optional.empty();
-        }
+        Map<String, Integer> map = EnchantmentUtils.toMap(enchant);
+        Integer level = map.get(key.toString());
+        if (level == null) return Optional.empty();
+        return Optional.of(new Enchantment(key, level));
     }
 
     @Override
@@ -459,24 +459,14 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
     protected Optional<List<Enchantment>> enchantments(ComponentItemWrapper item) {
         Object exactEnchantments = item.getExactComponent(DataComponentTypes.ENCHANTMENTS);
         if (exactEnchantments == null) return Optional.empty();
-        try {
-            return Optional.of(EnchantmentUtils.toList(exactEnchantments));
-        } catch (ReflectiveOperationException e) {
-            this.plugin.logger().warn("Failed to get enchantments " + exactEnchantments, e);
-            return Optional.empty();
-        }
+        return Optional.of(EnchantmentUtils.toList(exactEnchantments));
     }
 
     @Override
     protected Optional<List<Enchantment>> storedEnchantments(ComponentItemWrapper item) {
         Object exactEnchantments = item.getExactComponent(DataComponentTypes.STORED_ENCHANTMENTS);
         if (exactEnchantments == null) return Optional.empty();
-        try {
-            return Optional.of(EnchantmentUtils.toList(exactEnchantments));
-        } catch (ReflectiveOperationException e) {
-            this.plugin.logger().warn("Failed to get stored enchantments " + exactEnchantments, e);
-            return Optional.empty();
-        }
+        return Optional.of(EnchantmentUtils.toList(exactEnchantments));
     }
 
     @Override
@@ -595,34 +585,30 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
     protected ComponentItemWrapper mergeCopy(ComponentItemWrapper item1, ComponentItemWrapper item2) {
         Object itemStack1 = item1.getLiteralObject();
         Object itemStack2 = item2.getLiteralObject();
-        Object itemStack3 = FastNMS.INSTANCE.method$ItemStack$transmuteCopy(itemStack1, FastNMS.INSTANCE.method$ItemStack$getItem(itemStack2), item2.count());
-        FastNMS.INSTANCE.method$ItemStack$applyComponents(itemStack3, FastNMS.INSTANCE.method$ItemStack$getComponentsPatch(itemStack2));
-        return new ComponentItemWrapper(FastNMS.INSTANCE.method$CraftItemStack$asCraftMirror(itemStack3));
+        Object itemStack3 = ItemStackProxy.INSTANCE.transmuteCopy(itemStack1, ItemStackProxy.INSTANCE.getItem(itemStack2), item2.count());
+        ItemStackProxy.INSTANCE.applyComponents(itemStack3, ItemStackProxy.INSTANCE.getComponentsPatch(itemStack2));
+        return new ComponentItemWrapper(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack3));
     }
 
     @Override
     protected void merge(ComponentItemWrapper item1, ComponentItemWrapper item2) {
         Object itemStack1 = item1.getLiteralObject();
         Object itemStack2 = item2.getLiteralObject();
-        try {
-            FastNMS.INSTANCE.method$ItemStack$applyComponents(itemStack1, FastNMS.INSTANCE.method$ItemStack$getComponentsPatch(itemStack2));
-        } catch (Exception e) {
-            this.plugin.logger().warn("Failed to merge item", e);
-        }
+        ItemStackProxy.INSTANCE.applyComponents(itemStack1, ItemStackProxy.INSTANCE.getComponentsPatch(itemStack2));
     }
 
     @Override
     protected ComponentItemWrapper transmuteCopy(ComponentItemWrapper item, Key newItem, int amount) {
         Object itemStack1 = item.getLiteralObject();
-        Object itemStack2 = FastNMS.INSTANCE.method$ItemStack$transmuteCopy(itemStack1, FastNMS.INSTANCE.method$Registry$getValue(MBuiltInRegistries.ITEM, KeyUtils.toResourceLocation(newItem)), amount);
-        return new ComponentItemWrapper(FastNMS.INSTANCE.method$CraftItemStack$asCraftMirror(itemStack2));
+        Object itemStack2 = ItemStackProxy.INSTANCE.transmuteCopy(itemStack1, RegistryUtils.getRegistryValue(MBuiltInRegistries.ITEM, KeyUtils.toIdentifier(newItem)), amount);
+        return new ComponentItemWrapper(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack2));
     }
 
     @Override
     protected ComponentItemWrapper unsafeTransmuteCopy(ComponentItemWrapper item, Object newItem, int amount) {
         Object itemStack1 = item.getLiteralObject();
-        Object itemStack2 = FastNMS.INSTANCE.method$ItemStack$transmuteCopy(itemStack1, newItem, amount);
-        return new ComponentItemWrapper(FastNMS.INSTANCE.method$CraftItemStack$asCraftMirror(itemStack2));
+        Object itemStack2 = ItemStackProxy.INSTANCE.transmuteCopy(itemStack1, newItem, amount);
+        return new ComponentItemWrapper(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack2));
     }
 
     @Override

@@ -2,14 +2,15 @@ package net.momirealms.craftengine.core.font;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.craftengine.core.entity.player.Player;
-import net.momirealms.craftengine.core.pack.LoadingSequence;
+import net.momirealms.craftengine.core.pack.Identifier;
 import net.momirealms.craftengine.core.pack.Pack;
-import net.momirealms.craftengine.core.pack.ResourceLocation;
 import net.momirealms.craftengine.core.pack.allocator.IdAllocator;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.config.ConfigParser;
 import net.momirealms.craftengine.core.plugin.config.IdSectionConfigParser;
+import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
+import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.plugin.context.ContextHolder;
 import net.momirealms.craftengine.core.plugin.context.PlayerOptionalContext;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedResourceConfigException;
@@ -327,13 +328,18 @@ public abstract class AbstractFontManager implements FontManager {
         }
 
         @Override
-        public int loadingSequence() {
-            return LoadingSequence.EMOJI;
+        public int count() {
+            return AbstractFontManager.this.emojis.size();
         }
 
         @Override
-        public int count() {
-            return AbstractFontManager.this.emojis.size();
+        public LoadingStage loadingStage() {
+            return LoadingStages.EMOJI;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.IMAGE);
         }
 
         @Override
@@ -400,13 +406,18 @@ public abstract class AbstractFontManager implements FontManager {
         }
 
         @Override
-        public int loadingSequence() {
-            return LoadingSequence.IMAGE;
+        public int count() {
+            return AbstractFontManager.this.bitmapImages.size();
         }
 
         @Override
-        public int count() {
-            return AbstractFontManager.this.bitmapImages.size();
+        public LoadingStage loadingStage() {
+            return LoadingStages.IMAGE;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.TEMPLATE);
         }
 
         @Override
@@ -501,12 +512,12 @@ public abstract class AbstractFontManager implements FontManager {
                 throw new LocalizedResourceConfigException("warning.config.image.missing_file");
             }
 
-            String resourceLocation = MiscUtils.make(CharacterUtils.replaceBackslashWithSlash(file.toString()), s -> s.endsWith(".png") ? s : s + ".png");
-            if (!ResourceLocation.isValid(resourceLocation)) {
-                throw new LocalizedResourceConfigException("warning.config.image.invalid_file_chars", resourceLocation);
+            String identifier = MiscUtils.make(CharacterUtils.replaceBackslashWithSlash(file.toString()), s -> s.endsWith(".png") ? s : s + ".png");
+            if (!Identifier.isValid(identifier)) {
+                throw new LocalizedResourceConfigException("warning.config.image.invalid_file_chars", identifier);
             }
             String fontName = section.getOrDefault("font", pack.namespace()+ ":default").toString();
-            if (!ResourceLocation.isValid(fontName)) {
+            if (!Identifier.isValid(fontName)) {
                 throw new LocalizedResourceConfigException("warning.config.image.invalid_font_chars", fontName);
             }
 
@@ -639,7 +650,7 @@ public abstract class AbstractFontManager implements FontManager {
 
                 Object heightObj = section.get("height");
                 if (heightObj == null) {
-                    Key namespacedPath = Key.of(resourceLocation);
+                    Key namespacedPath = Key.of(identifier);
                     Path targetImagePath = pack.resourcePackFolder()
                             .resolve("assets")
                             .resolve(namespacedPath.namespace())
@@ -664,7 +675,7 @@ public abstract class AbstractFontManager implements FontManager {
                     throw new LocalizedResourceConfigException("warning.config.image.height_ascent_conflict", String.valueOf(height), String.valueOf(ascent));
                 }
 
-                BitmapImage bitmapImage = new BitmapImage(id, fontId, height, ascent, resourceLocation, codepointGrid);
+                BitmapImage bitmapImage = new BitmapImage(id, fontId, height, ascent, identifier, codepointGrid);
                 for (int[] y : codepointGrid) {
                     for (int x : y) {
                         font.addBitmapImage(x, bitmapImage);

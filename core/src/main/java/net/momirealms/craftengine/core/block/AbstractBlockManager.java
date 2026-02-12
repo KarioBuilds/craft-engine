@@ -15,10 +15,9 @@ import net.momirealms.craftengine.core.block.properties.Properties;
 import net.momirealms.craftengine.core.block.properties.Property;
 import net.momirealms.craftengine.core.entity.culling.CullingData;
 import net.momirealms.craftengine.core.loot.LootTable;
-import net.momirealms.craftengine.core.pack.LoadingSequence;
+import net.momirealms.craftengine.core.pack.Identifier;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.pack.PendingConfigSection;
-import net.momirealms.craftengine.core.pack.ResourceLocation;
 import net.momirealms.craftengine.core.pack.allocator.BlockStateCandidate;
 import net.momirealms.craftengine.core.pack.allocator.IdAllocator;
 import net.momirealms.craftengine.core.pack.allocator.VisualBlockStateAllocator;
@@ -29,6 +28,8 @@ import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.config.ConfigParser;
 import net.momirealms.craftengine.core.plugin.config.IdSectionConfigParser;
 import net.momirealms.craftengine.core.plugin.config.SectionConfigParser;
+import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
+import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.plugin.context.CommonFunctions;
 import net.momirealms.craftengine.core.plugin.context.Context;
 import net.momirealms.craftengine.core.plugin.context.EventTrigger;
@@ -262,18 +263,13 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
                                                      @NotNull Map<EventTrigger, List<Function<Context>>> events,
                                                      @Nullable LootTable<?> lootTable);
 
-    public class BlockStateMappingParser extends SectionConfigParser {
-        public static final String[] CONFIG_SECTION_NAME = new String[]{"block-state-mappings", "block-state-mapping"};
+    public final class BlockStateMappingParser extends SectionConfigParser {
+        public static final String[] CONFIG_SECTION_NAME = new String[]{"block-state-mappings", "block-state-mapping", "block_state_mappings", "block_state_mapping"};
         private int count;
 
         @Override
         public String[] sectionId() {
             return CONFIG_SECTION_NAME;
-        }
-
-        @Override
-        public int loadingSequence() {
-            return LoadingSequence.BLOCK_STATE_MAPPING;
         }
 
         @Override
@@ -284,6 +280,11 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
         @Override
         public void preProcess() {
             this.count = 0;
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return LoadingStages.BLOCK_STATE_MAPPING;
         }
 
         @Override
@@ -335,7 +336,7 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
         }
     }
 
-    public class BlockParser extends IdSectionConfigParser {
+    public final class BlockParser extends IdSectionConfigParser {
         public static final String[] CONFIG_SECTION_NAME = new String[]{"blocks", "block"};
         private final IdAllocator internalIdAllocator;
         private final VisualBlockStateAllocator visualBlockStateAllocator;
@@ -356,11 +357,21 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
         }
 
         public IdAllocator internalIdAllocator() {
-            return internalIdAllocator;
+            return this.internalIdAllocator;
         }
 
         public VisualBlockStateAllocator visualBlockStateAllocator() {
-            return visualBlockStateAllocator;
+            return this.visualBlockStateAllocator;
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return LoadingStages.BLOCK;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.BLOCK_STATE_MAPPING, LoadingStages.ITEM);
         }
 
         @Override
@@ -412,11 +423,6 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
         }
 
         @Override
-        public int loadingSequence() {
-            return LoadingSequence.BLOCK;
-        }
-
-        @Override
         public void parseSection(Pack pack, Path path, String node, Key id, Map<String, Object> section) {
             if (isVanillaBlock(id)) {
                 parseVanillaBlock(id, section);
@@ -434,7 +440,7 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
             if (settings != null) {
                 Object clientBoundTags = settings.get("client-bound-tags");
                 if (clientBoundTags instanceof List<?> list) {
-                    List<String> clientSideTags = MiscUtils.getAsStringList(list).stream().filter(ResourceLocation::isValid).toList();
+                    List<String> clientSideTags = MiscUtils.getAsStringList(list).stream().filter(Identifier::isValid).toList();
                     AbstractBlockManager.this.setVanillaBlockTags(id, clientSideTags);
                 }
             }
@@ -792,7 +798,7 @@ public abstract class AbstractBlockManager extends AbstractModelGenerator implem
         private JsonObject parseAppearanceModelSectionAsJson(Map<String, Object> section) {
             JsonObject json = new JsonObject();
             String modelPath = ResourceConfigUtils.requireNonEmptyStringOrThrow(section.get("path"), "warning.config.block.state.model.missing_path");
-            if (!ResourceLocation.isValid(modelPath)) {
+            if (!Identifier.isValid(modelPath)) {
                 throw new LocalizedResourceConfigException("warning.config.block.state.model.invalid_path", modelPath);
             }
             json.addProperty("model", modelPath);

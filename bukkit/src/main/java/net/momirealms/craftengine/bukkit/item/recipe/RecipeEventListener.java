@@ -5,10 +5,7 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.reflection.bukkit.CraftBukkitReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
@@ -28,6 +25,18 @@ import net.momirealms.craftengine.core.plugin.context.ContextKey;
 import net.momirealms.craftengine.core.plugin.context.PlayerOptionalContext;
 import net.momirealms.craftengine.core.plugin.context.function.Function;
 import net.momirealms.craftengine.core.util.*;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftComplexRecipeProxy;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftInventoryAnvilProxy;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftInventoryViewProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.chat.ComponentProxy;
+import net.momirealms.craftengine.proxy.minecraft.resources.ResourceKeyProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.ContainerProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.entity.player.PlayerProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.inventory.AbstractContainerMenuProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.inventory.CraftingContainerProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.item.crafting.*;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -437,15 +446,11 @@ public class RecipeEventListener implements Listener {
         int repairPenalty = wrappedFirst.repairCost().orElse(0) + wrappedSecond.repairCost().orElse(0);
 
         if (renameText != null && !renameText.isBlank()) {
-            try {
-                if (!renameText.equals(CoreReflections.method$Component$getString.invoke(ComponentUtils.jsonToMinecraft(wrappedFirst.hoverNameJson().orElse(AdventureHelper.EMPTY_COMPONENT))))) {
-                    wrappedFirst.customNameJson(AdventureHelper.componentToJson(Component.text(renameText)));
-                    repairCost += 1;
-                } else if (repairCost == 0) {
-                    hasResult = false;
-                }
-            } catch (ReflectiveOperationException e) {
-                plugin.logger().warn("Failed to get hover name", e);
+            if (!renameText.equals(ComponentProxy.INSTANCE.getString(ComponentUtils.jsonToMinecraft(wrappedFirst.hoverNameJson().orElse(AdventureHelper.EMPTY_COMPONENT))))) {
+                wrappedFirst.customNameJson(AdventureHelper.componentToJson(Component.text(renameText)));
+                repairCost += 1;
+            } else if (repairCost == 0) {
+                hasResult = false;
             }
         } else if (VersionHelper.isOrAbove1_20_5() && wrappedFirst.hasComponent(DataComponentTypes.CUSTOM_NAME)) {
             repairCost += 1;
@@ -458,17 +463,13 @@ public class RecipeEventListener implements Listener {
         int finalCost = repairCost + repairPenalty;
 
         // To fix some client side visual issues
-        try {
-            Object anvilMenu;
-            if (VersionHelper.isOrAbove1_21()) {
-                anvilMenu = CraftBukkitReflections.field$CraftInventoryView$container.get(event.getView());
-            } else {
-                anvilMenu = CraftBukkitReflections.field$CraftInventoryAnvil$menu.get(inventory);
-            }
-            CoreReflections.method$AbstractContainerMenu$broadcastFullState.invoke(anvilMenu);
-        } catch (ReflectiveOperationException e) {
-            this.plugin.logger().warn("Failed to broadcast changes", e);
+        Object anvilMenu;
+        if (VersionHelper.isOrAbove1_21()) {
+            anvilMenu = CraftInventoryViewProxy.INSTANCE.getContainer(event.getView());
+        } else {
+            anvilMenu = CraftInventoryAnvilProxy.INSTANCE.getContainer(inventory);
         }
+        AbstractContainerMenuProxy.INSTANCE.broadcastFullState(anvilMenu);
 
         if (VersionHelper.isOrAbove1_21()) {
             AnvilView anvilView = event.getView();
@@ -521,12 +522,8 @@ public class RecipeEventListener implements Listener {
                     renameText = LegacyInventoryUtils.getRenameText(inventory);
                 }
                 if (renameText != null && !renameText.isBlank()) {
-                    try {
-                        if (!renameText.equals(CoreReflections.method$Component$getString.invoke(ComponentUtils.jsonToMinecraft(wrappedFirst.hoverNameJson().orElse(AdventureHelper.EMPTY_COMPONENT))))) {
-                            event.setResult(null);
-                        }
-                    } catch (Exception e) {
-                        this.plugin.logger().warn("Failed to get hover name", e);
+                    if (!renameText.equals(ComponentProxy.INSTANCE.getString(ComponentUtils.jsonToMinecraft(wrappedFirst.hoverNameJson().orElse(AdventureHelper.EMPTY_COMPONENT))))) {
+                        event.setResult(null);
                     }
                 }
             }
@@ -550,16 +547,16 @@ public class RecipeEventListener implements Listener {
         boolean hasCustomItem = ItemStackUtils.hasCustomItem(inventory.getMatrix());
         if (!hasCustomItem)
             return;
-        if (!CraftBukkitReflections.clazz$CraftComplexRecipe.isInstance(complexRecipe)) {
+        if (!CraftComplexRecipeProxy.CLASS.isInstance(complexRecipe)) {
             return;
         }
         try {
-            Object mcRecipe = CraftBukkitReflections.field$CraftComplexRecipe$recipe.get(complexRecipe);
-            if (CoreReflections.clazz$ArmorDyeRecipe.isInstance(mcRecipe) || CoreReflections.clazz$FireworkStarFadeRecipe.isInstance(mcRecipe)) {
+            Object mcRecipe = CraftComplexRecipeProxy.INSTANCE.getRecipe(complexRecipe);
+            if (ArmorDyeRecipeProxy.CLASS.isInstance(mcRecipe) || FireworkStarFadeRecipeProxy.CLASS.isInstance(mcRecipe)) {
                 return;
             }
             // 处理修复配方，在此处理才能使用玩家参数构建物品
-            if (CoreReflections.clazz$RepairItemRecipe.isInstance(mcRecipe)) {
+            if (RepairItemRecipeProxy.CLASS.isInstance(mcRecipe)) {
                 Pair<ItemStack, ItemStack> theOnlyTwoItem = getTheOnlyTwoItem(inventory.getMatrix());
                 if (theOnlyTwoItem == null) return;
                 Item<ItemStack> first = BukkitItemManager.instance().wrap(theOnlyTwoItem.left());
@@ -688,15 +685,15 @@ public class RecipeEventListener implements Listener {
             event.setResult(Event.Result.DENY);
 
             Object mcPlayer = serverPlayer.serverPlayer();
-            Object craftingMenu = FastNMS.INSTANCE.field$Player$containerMenu(mcPlayer);
+            Object craftingMenu = PlayerProxy.INSTANCE.getContainerMenu(mcPlayer);
 
             // 如果有视觉结果，先临时替换为真实的
             if (ceRecipe.hasVisualResult()) {
                 inventory.setResult(ceRecipe.assemble(null, ItemBuildContext.of(serverPlayer)));
             }
             // 先取一次
-            Object itemMoved = FastNMS.INSTANCE.method$AbstractContainerMenu$quickMoveStack(craftingMenu, mcPlayer, 0 /* result slot */);
-            if (FastNMS.INSTANCE.method$ItemStack$isEmpty(itemMoved)) {
+            Object itemMoved = AbstractContainerMenuProxy.INSTANCE.quickMoveStack(craftingMenu, mcPlayer, 0 /* result slot */);
+            if (ItemStackProxy.INSTANCE.isEmpty(itemMoved)) {
                 // 发现取了个寂寞，根本没地方放，给他复原成视觉结果
                 inventory.setResult(visualResultOrReal);
                 return;
@@ -722,8 +719,8 @@ public class RecipeEventListener implements Listener {
                 }
 
                 // 连续获取
-                itemMoved = FastNMS.INSTANCE.method$AbstractContainerMenu$quickMoveStack(craftingMenu, mcPlayer, 0 /* result slot */);
-                if (FastNMS.INSTANCE.method$ItemStack$isEmpty(itemMoved)) {
+                itemMoved = AbstractContainerMenuProxy.INSTANCE.quickMoveStack(craftingMenu, mcPlayer, 0 /* result slot */);
+                if (ItemStackProxy.INSTANCE.isEmpty(itemMoved)) {
                     // 发现取了个寂寞，根本没地方放，给他复原成视觉结果
                     inventory.setResult(visualResultOrReal);
                     break;
@@ -777,16 +774,21 @@ public class RecipeEventListener implements Listener {
     // bukkit的getRecipe会生成新的recipe对象，过程较慢，只需要获取配方id即可
     @Nullable
     private Key getCurrentCraftingRecipeId(CraftingInventory inventory) {
-        Object craftContainer = FastNMS.INSTANCE.method$CraftInventory$getInventory(inventory);
-        Object recipeHolderOrRecipe = FastNMS.INSTANCE.method$CraftingContainer$getCurrentRecipe(craftContainer);
+        Object craftContainer = CraftInventoryProxy.INSTANCE.getInventory(inventory);
+        Object recipeHolderOrRecipe;
+        if (VersionHelper.isOrAbove1_21()) {
+            recipeHolderOrRecipe = CraftingContainerProxy.INSTANCE.getCurrentRecipe(craftContainer);
+        } else {
+            recipeHolderOrRecipe = ContainerProxy.INSTANCE.getCurrentRecipe(craftContainer);
+        }
         if (recipeHolderOrRecipe == null) return null;
         if (VersionHelper.isOrAbove1_21_2()) {
-            return KeyUtils.resourceLocationToKey(FastNMS.INSTANCE.field$ResourceKey$location(FastNMS.INSTANCE.field$RecipeHolder$id(recipeHolderOrRecipe)));
+            return KeyUtils.identifierToKey(ResourceKeyProxy.INSTANCE.getIdentifier(RecipeHolderProxy.INSTANCE.getId(recipeHolderOrRecipe)));
         } else if (VersionHelper.isOrAbove1_20_2()) {
-            return KeyUtils.resourceLocationToKey(FastNMS.INSTANCE.field$RecipeHolder$id(recipeHolderOrRecipe));
+            return KeyUtils.identifierToKey(RecipeHolderProxy.INSTANCE.getId(recipeHolderOrRecipe));
         } else {
             // 其实是recipe getId的实现
-            return KeyUtils.resourceLocationToKey(FastNMS.INSTANCE.field$RecipeHolder$id(recipeHolderOrRecipe));
+            return KeyUtils.identifierToKey(RecipeProxy.INSTANCE.getId(recipeHolderOrRecipe));
         }
     }
 
@@ -884,7 +886,7 @@ public class RecipeEventListener implements Listener {
         if (serverPlayer == null) return;
 
         if (recipe instanceof SmithingTransformRecipe transformRecipe) {
-            Key recipeId = KeyUtils.namespacedKey2Key(transformRecipe.getKey());
+            Key recipeId = KeyUtils.namespacedKeyToKey(transformRecipe.getKey());
             Optional<Recipe<ItemStack>> optionalRecipe = this.recipeManager.recipeById(recipeId);
             // 也许是其他插件注册的配方，直接无视
             if (optionalRecipe.isEmpty() || !(optionalRecipe.get() instanceof CustomSmithingTransformRecipe<ItemStack> ceRecipe)) {
@@ -930,15 +932,15 @@ public class RecipeEventListener implements Listener {
                 event.setResult(Event.Result.DENY);
 
                 Object mcPlayer = serverPlayer.serverPlayer();
-                Object smithingMenu = FastNMS.INSTANCE.field$Player$containerMenu(mcPlayer);
+                Object smithingMenu = PlayerProxy.INSTANCE.getContainerMenu(mcPlayer);
 
                 // 如果有视觉结果，先临时替换为真实的
                 if (ceRecipe.hasVisualResult()) {
                     inventory.setResult(ceRecipe.assemble(getSmithingInput(inventory), ItemBuildContext.of(serverPlayer)));
                 }
                 // 先取一次
-                Object itemMoved = FastNMS.INSTANCE.method$AbstractContainerMenu$quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
-                if (FastNMS.INSTANCE.method$ItemStack$isEmpty(itemMoved)) {
+                Object itemMoved = AbstractContainerMenuProxy.INSTANCE.quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
+                if (ItemStackProxy.INSTANCE.isEmpty(itemMoved)) {
                     // 发现取了个寂寞，根本没地方放，给他复原成视觉结果
                     inventory.setResult(visualResultOrReal);
                     return;
@@ -958,7 +960,7 @@ public class RecipeEventListener implements Listener {
 
                 for (;;) {
                     // 这个时候配方已经更新了，如果变化了，那么就不要操作
-                    if (!(inventory.getRecipe() instanceof SmithingTransformRecipe newTransform) || !recipeId.equals(KeyUtils.namespacedKey2Key(newTransform.getKey()))) {
+                    if (!(inventory.getRecipe() instanceof SmithingTransformRecipe newTransform) || !recipeId.equals(KeyUtils.namespacedKeyToKey(newTransform.getKey()))) {
                         break;
                     }
 
@@ -969,8 +971,8 @@ public class RecipeEventListener implements Listener {
                     }
 
                     // 连续获取
-                    itemMoved = FastNMS.INSTANCE.method$AbstractContainerMenu$quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
-                    if (FastNMS.INSTANCE.method$ItemStack$isEmpty(itemMoved)) {
+                    itemMoved = AbstractContainerMenuProxy.INSTANCE.quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
+                    if (ItemStackProxy.INSTANCE.isEmpty(itemMoved)) {
                         // 发现取了个寂寞，根本没地方放，给他复原成视觉结果
                         inventory.setResult(visualResultOrReal);
                         break;
@@ -1028,7 +1030,7 @@ public class RecipeEventListener implements Listener {
 
         // trim 配方只能执行函数
         else if (recipe instanceof SmithingTrimRecipe trimRecipe) {
-            Key recipeId = KeyUtils.namespacedKey2Key(trimRecipe.getKey());
+            Key recipeId = KeyUtils.namespacedKeyToKey(trimRecipe.getKey());
             Optional<Recipe<ItemStack>> optionalRecipe = this.recipeManager.recipeById(recipeId);
             if (optionalRecipe.isEmpty() || !(optionalRecipe.get() instanceof CustomSmithingTrimRecipe<ItemStack> ceRecipe)) {
                 return;
@@ -1064,11 +1066,11 @@ public class RecipeEventListener implements Listener {
                 event.setResult(Event.Result.DENY);
 
                 Object mcPlayer = serverPlayer.serverPlayer();
-                Object smithingMenu = FastNMS.INSTANCE.field$Player$containerMenu(mcPlayer);
+                Object smithingMenu = PlayerProxy.INSTANCE.getContainerMenu(mcPlayer);
 
                 // 先取一次
-                Object itemMoved = FastNMS.INSTANCE.method$AbstractContainerMenu$quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
-                if (FastNMS.INSTANCE.method$ItemStack$isEmpty(itemMoved)) {
+                Object itemMoved = AbstractContainerMenuProxy.INSTANCE.quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
+                if (ItemStackProxy.INSTANCE.isEmpty(itemMoved)) {
                     // 发现取了个寂寞，根本没地方放
                     return;
                 }
@@ -1082,12 +1084,12 @@ public class RecipeEventListener implements Listener {
 
                 for (;;) {
                     // 这个时候配方已经更新了，如果变化了，那么就不要操作
-                    if (!(inventory.getRecipe() instanceof SmithingTrimRecipe newTrim) || !recipeId.equals(KeyUtils.namespacedKey2Key(newTrim.getKey()))) {
+                    if (!(inventory.getRecipe() instanceof SmithingTrimRecipe newTrim) || !recipeId.equals(KeyUtils.namespacedKeyToKey(newTrim.getKey()))) {
                         break;
                     }
                     // 连续获取
-                    itemMoved = FastNMS.INSTANCE.method$AbstractContainerMenu$quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
-                    if (FastNMS.INSTANCE.method$ItemStack$isEmpty(itemMoved)) {
+                    itemMoved = AbstractContainerMenuProxy.INSTANCE.quickMoveStack(smithingMenu, mcPlayer, 3 /* result slot */);
+                    if (ItemStackProxy.INSTANCE.isEmpty(itemMoved)) {
                         // 发现取了个寂寞，根本没地方放
                         break;
                     }

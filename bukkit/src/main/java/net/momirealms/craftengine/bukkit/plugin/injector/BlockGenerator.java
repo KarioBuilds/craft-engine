@@ -1,6 +1,5 @@
 package net.momirealms.craftengine.bukkit.plugin.injector;
 
-import com.google.common.collect.ImmutableList;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.modifier.Visibility;
@@ -14,7 +13,6 @@ import net.bytebuddy.implementation.bind.annotation.SuperCall;
 import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.momirealms.craftengine.bukkit.block.BukkitBlockShape;
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBlocks;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistries;
@@ -30,13 +28,20 @@ import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.ObjectHolder;
 import net.momirealms.craftengine.core.util.VersionHelper;
+import net.momirealms.craftengine.proxy.minecraft.core.DirectionProxy;
+import net.momirealms.craftengine.proxy.minecraft.resources.ResourceKeyProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlockProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.StateDefinitionProxy;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
-import java.util.function.Function;
 
 public final class BlockGenerator {
     private static final BukkitBlockShape STONE_SHAPE =
@@ -217,20 +222,20 @@ public final class BlockGenerator {
         Object newBlockInstance = constructor$CraftEngineBlock.invoke(createEmptyBlockProperties(blockId));
         field$CraftEngineBlock$behavior.set(newBlockInstance, behaviorHolder);
         field$CraftEngineBlock$shape.set(newBlockInstance, shapeHolder);
-        Object stateDefinitionBuilder = CoreReflections.constructor$StateDefinition$Builder.newInstance(newBlockInstance);
-        Object stateDefinition = CoreReflections.method$StateDefinition$Builder$create.invoke(stateDefinitionBuilder,
-                (Function<Object, Object>) FastNMS.INSTANCE::method$Block$defaultState, BlockStateGenerator.instance$StateDefinition$Factory);
-        CoreReflections.field$Block$StateDefinition.set(newBlockInstance, stateDefinition);
-        CoreReflections.field$Block$defaultBlockState.set(newBlockInstance, ((ImmutableList<?>) CoreReflections.field$StateDefinition$states.get(stateDefinition)).getFirst());
+        Object stateDefinitionBuilder = StateDefinitionProxy.BuilderProxy.INSTANCE.newInstance(newBlockInstance);
+        Object stateDefinition = StateDefinitionProxy.BuilderProxy.INSTANCE.create(stateDefinitionBuilder,
+                BlockProxy.INSTANCE::getDefaultBlockState, BlockStateGenerator.instance$StateDefinition$Factory);
+        BlockProxy.INSTANCE.setStateDefinition(newBlockInstance, stateDefinition);
+        BlockProxy.INSTANCE.setDefaultBlockState(newBlockInstance, StateDefinitionProxy.INSTANCE.getStates(stateDefinition).getFirst());
         return (DelegatingBlock) newBlockInstance;
     }
 
-    private static Object createEmptyBlockProperties(Key id) throws ReflectiveOperationException {
-        Object blockProperties = CoreReflections.method$BlockBehaviour$Properties$of.invoke(null);
-        Object resourceLocation = KeyUtils.toResourceLocation(id);
-        Object resourceKey = FastNMS.INSTANCE.method$ResourceKey$create(MRegistries.BLOCK, resourceLocation);
-        if (CoreReflections.field$BlockBehaviour$Properties$id != null) {
-            CoreReflections.field$BlockBehaviour$Properties$id.set(blockProperties, resourceKey);
+    private static Object createEmptyBlockProperties(Key id) {
+        Object blockProperties = BlockBehaviourProxy.PropertiesProxy.INSTANCE.of();
+        Object identifier = KeyUtils.toIdentifier(id);
+        Object resourceKey = ResourceKeyProxy.INSTANCE.create(MRegistries.BLOCK, identifier);
+        if (VersionHelper.isOrAbove1_21_2()) {
+            BlockBehaviourProxy.PropertiesProxy.INSTANCE.setId(blockProperties, resourceKey);
         }
         return blockProperties;
     }
@@ -263,14 +268,14 @@ public final class BlockGenerator {
             Object serverLevel = args[levelIndex];
             Object blockPos = args[posIndex];
             // Y axis
-            if (direction == CoreReflections.instance$Direction$DOWN) {
-                Object chunkSource = FastNMS.INSTANCE.method$ServerLevel$getChunkSource(serverLevel);
-                FastNMS.INSTANCE.method$ServerChunkCache$blockChanged(chunkSource, blockPos);
-                NoteBlockChainUpdateUtils.noteBlockChainUpdate(serverLevel, chunkSource, CoreReflections.instance$Direction$UP, blockPos, Config.maxNoteBlockChainUpdate());
-            } else if (direction == CoreReflections.instance$Direction$UP) {
-                Object chunkSource = FastNMS.INSTANCE.method$ServerLevel$getChunkSource(serverLevel);
-                FastNMS.INSTANCE.method$ServerChunkCache$blockChanged(chunkSource, blockPos);
-                NoteBlockChainUpdateUtils.noteBlockChainUpdate(serverLevel, chunkSource, CoreReflections.instance$Direction$DOWN, blockPos, Config.maxNoteBlockChainUpdate());
+            if (direction == DirectionProxy.DOWN) {
+                Object chunkSource = ServerLevelProxy.INSTANCE.getChunkSource(serverLevel);
+                ServerChunkCacheProxy.INSTANCE.blockChanged(chunkSource, blockPos);
+                NoteBlockChainUpdateUtils.noteBlockChainUpdate(serverLevel, chunkSource, DirectionProxy.UP, blockPos, Config.maxNoteBlockChainUpdate());
+            } else if (direction == DirectionProxy.UP) {
+                Object chunkSource = ServerLevelProxy.INSTANCE.getChunkSource(serverLevel);
+                ServerChunkCacheProxy.INSTANCE.blockChanged(chunkSource, blockPos);
+                NoteBlockChainUpdateUtils.noteBlockChainUpdate(serverLevel, chunkSource, DirectionProxy.DOWN, blockPos, Config.maxNoteBlockChainUpdate());
             }
         }
     }
@@ -575,10 +580,10 @@ public final class BlockGenerator {
         public Object intercept(@This Object thisObj, @AllArguments Object[] args, @SuperCall Callable<Object> superMethod) {
             ObjectHolder<BlockBehavior> holder = ((DelegatingBlock) thisObj).behaviorDelegate();
             try {
-                return holder.value().pickupBlock(thisObj, args, () -> CoreReflections.instance$ItemStack$EMPTY);
+                return holder.value().pickupBlock(thisObj, args, () -> ItemStackProxy.EMPTY);
             } catch (Exception e) {
                 CraftEngine.instance().logger().severe("Failed to run pickupBlock", e);
-                return CoreReflections.instance$ItemStack$EMPTY;
+                return ItemStackProxy.EMPTY;
             }
         }
     }

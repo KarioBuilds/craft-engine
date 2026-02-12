@@ -1,5 +1,6 @@
 package net.momirealms.craftengine.bukkit.plugin;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.antigrieflib.AntiGriefLib;
 import net.momirealms.craftengine.bukkit.advancement.BukkitAdvancementManager;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
@@ -26,7 +27,6 @@ import net.momirealms.craftengine.bukkit.plugin.scheduler.BukkitSchedulerAdapter
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.sound.BukkitSoundManager;
 import net.momirealms.craftengine.bukkit.util.EventUtils;
-import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.bukkit.world.score.BukkitTeamManager;
 import net.momirealms.craftengine.core.item.ItemManager;
@@ -45,6 +45,7 @@ import net.momirealms.craftengine.core.plugin.scheduler.SchedulerTask;
 import net.momirealms.craftengine.core.util.CharacterUtils;
 import net.momirealms.craftengine.core.util.ReflectionUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
+import net.momirealms.craftengine.proxy.BukkitProxy;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -154,11 +155,6 @@ public final class BukkitCraftEngine extends CraftEngine {
         } catch (Exception e) {
             throw new InjectionException("Error injecting recipes", e);
         }
-        try {
-            ProtectedFieldVisitor.init();
-        } catch (Exception e) {
-            throw new InjectionException("Error initializing ProtectedFieldVisitor", e);
-        }
         // 初始化一些注册表
         super.onPluginLoad();
         BukkitBlockBehaviors.init();
@@ -207,6 +203,7 @@ public final class BukkitCraftEngine extends CraftEngine {
     @Override
     protected List<Dependency> platformDependencies() {
         return List.of(
+                Dependencies.CRAFT_ENGINE_BUKKIT_PROXY,
                 Dependencies.BSTATS_BUKKIT,
                 Dependencies.CLOUD_BUKKIT, Dependencies.CLOUD_PAPER, Dependencies.CLOUD_BRIGADIER, Dependencies.CLOUD_MINECRAFT_EXTRAS
         );
@@ -225,6 +222,8 @@ public final class BukkitCraftEngine extends CraftEngine {
             Bukkit.getPluginManager().disablePlugin(this.javaPlugin);
             return;
         }
+        // 预检查ASM代理可用性，添加 -Dnet.momirealms.craftengine.pre-check-asm-proxy=true 启动参数启用
+        ReflectionUtils.preCheckASMProxy();
         this.successfullyEnabled = true;
         if (!this.successfullyLoaded) {
             logger().severe(" ");
@@ -279,6 +278,25 @@ public final class BukkitCraftEngine extends CraftEngine {
                 }
             }, 1, 1);
         }
+    }
+
+    @Override
+    public void setupProxy() {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), getPatches());
+    }
+
+    private List<String> getPatches() {
+        List<String> patches = new ObjectArrayList<>();
+        if (VersionHelper.isPaper()) {
+            patches.add("paper");
+        }
+        if (VersionHelper.isFolia()) {
+            patches.add("folia");
+        }
+        if (VersionHelper.isLeaves()) {
+            patches.add("leaves");
+        }
+        return patches;
     }
 
     @Override

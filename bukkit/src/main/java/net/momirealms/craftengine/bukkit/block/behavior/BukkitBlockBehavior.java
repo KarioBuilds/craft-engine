@@ -1,10 +1,9 @@
 package net.momirealms.craftengine.bukkit.block.behavior;
 
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MFluids;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MItems;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
+import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.bukkit.util.MirrorUtils;
 import net.momirealms.craftengine.bukkit.util.RotationUtils;
 import net.momirealms.craftengine.core.block.BlockStateWrapper;
@@ -13,6 +12,10 @@ import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.properties.Property;
 import net.momirealms.craftengine.core.util.*;
+import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidStateProxy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -132,18 +135,18 @@ public abstract class BukkitBlockBehavior extends BlockBehavior {
 
     @Override
     public Object pickupBlock(Object thisBlock, Object[] args, Callable<Object> superMethod) {
-        if (this.waterloggedProperty == null) return CoreReflections.instance$ItemStack$EMPTY;
+        if (this.waterloggedProperty == null) return ItemStackProxy.EMPTY;
         Object blockState = args[pickupBlock$blockState];
         Object world = args[pickupBlock$world];
         Object pos = args[pickupBlock$pos];
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
-        if (optionalCustomState.isEmpty()) return CoreReflections.instance$ItemStack$EMPTY;
+        if (optionalCustomState.isEmpty()) return ItemStackProxy.EMPTY;
         ImmutableBlockState immutableBlockState = optionalCustomState.get();
         if (immutableBlockState.get(this.waterloggedProperty)) {
-            FastNMS.INSTANCE.method$LevelWriter$setBlock(world, pos, immutableBlockState.with(this.waterloggedProperty, false).customBlockState().literalObject(), 3);
-            return FastNMS.INSTANCE.constructor$ItemStack(MItems.WATER_BUCKET, 1);
+            LevelWriterProxy.INSTANCE.setBlock(world, pos, immutableBlockState.with(this.waterloggedProperty, false).customBlockState().literalObject(), 3);
+            return ItemStackProxy.INSTANCE.newInstance(MItems.WATER_BUCKET, 1);
         }
-        return CoreReflections.instance$ItemStack$EMPTY;
+        return ItemStackProxy.EMPTY;
     }
 
     @Override
@@ -153,10 +156,10 @@ public abstract class BukkitBlockBehavior extends BlockBehavior {
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
         if (optionalCustomState.isEmpty()) return false;
         ImmutableBlockState immutableBlockState = optionalCustomState.get();
-        Object fluidType = FastNMS.INSTANCE.method$FluidState$getType(args[3]);
+        Object fluidType = FluidStateProxy.INSTANCE.getType(args[3]);
         if (!immutableBlockState.get(this.waterloggedProperty) && fluidType == MFluids.WATER) {
-            FastNMS.INSTANCE.method$LevelWriter$setBlock(args[0], args[1], immutableBlockState.with(this.waterloggedProperty, true).customBlockState().literalObject(), 3);
-            FastNMS.INSTANCE.method$ScheduledTickAccess$scheduleFluidTick(args[0], args[1], fluidType, 5);
+            LevelWriterProxy.INSTANCE.setBlock(args[0], args[1], immutableBlockState.with(this.waterloggedProperty, true).customBlockState().literalObject(), 3);
+            LevelUtils.scheduleFluidTick(args[0], args[1], fluidType, 5);
             return true;
         }
         return false;
@@ -183,6 +186,10 @@ public abstract class BukkitBlockBehavior extends BlockBehavior {
         if (optionalCustomState.isEmpty()) return false;
         BlockStateWrapper vanillaState = optionalCustomState.get().visualBlockState();
         if (vanillaState == null) return false;
-        return FastNMS.INSTANCE.method$BlockStateBase$isPathFindable(vanillaState.literalObject(), VersionHelper.isOrAbove1_20_5() ? null : args[1], VersionHelper.isOrAbove1_20_5() ? null : args[2], args[isPathFindable$type]);
+        if (VersionHelper.isOrAbove1_20_5()) {
+            return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isPathfindable(vanillaState.literalObject(), args[isPathFindable$type]);
+        } else {
+            return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isPathfindable(vanillaState.literalObject(), args[1], args[2], args[isPathFindable$type]);
+        }
     }
 }

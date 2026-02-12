@@ -7,23 +7,20 @@ import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.injector.WorldStorageInjector;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
-import net.momirealms.craftengine.bukkit.plugin.reflection.paper.PaperReflections;
-import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
-import net.momirealms.craftengine.bukkit.util.KeyUtils;
-import net.momirealms.craftengine.bukkit.util.LegacyDFUUtils;
-import net.momirealms.craftengine.bukkit.util.LocationUtils;
+import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.gen.ConditionalFeature;
 import net.momirealms.craftengine.bukkit.world.gen.CraftEngineFeatures;
 import net.momirealms.craftengine.core.block.BlockStateWrapper;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.properties.Property;
-import net.momirealms.craftengine.core.pack.LoadingSequence;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.config.ConfigParser;
 import net.momirealms.craftengine.core.plugin.config.IdSectionConfigParser;
+import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
+import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedException;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedResourceConfigException;
 import net.momirealms.craftengine.core.util.*;
@@ -37,6 +34,21 @@ import net.momirealms.craftengine.core.world.chunk.PalettedContainer;
 import net.momirealms.craftengine.core.world.chunk.storage.DefaultStorageAdaptor;
 import net.momirealms.craftengine.core.world.chunk.storage.StorageAdaptor;
 import net.momirealms.craftengine.core.world.chunk.storage.WorldDataStorage;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.CraftChunkProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.HolderProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.SectionPosProxy;
+import net.momirealms.craftengine.proxy.minecraft.resources.ResourceKeyProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ThreadedLevelLightEngineProxy;
+import net.momirealms.craftengine.proxy.minecraft.util.CrudeIncrementalIntIdentityHashBiMapProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.chunk.*;
+import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.feature.ConfiguredFeatureProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.placement.PlacedFeatureProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.placement.PlacementModifierProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.lighting.LightEventListenerProxy;
+import net.momirealms.craftengine.proxy.paper.chunk.system.entity.EntityLookupProxy;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.World;
@@ -102,12 +114,12 @@ public final class BukkitWorldManager implements WorldManager, Listener {
     }
 
     public synchronized CraftEngineFeatures fetchFeatures(Object serverLevel) {
-        World world = FastNMS.INSTANCE.method$Level$getCraftWorld(serverLevel);
+        World world = LevelProxy.INSTANCE.getWorld(serverLevel);
         String name = world.getName();
-        Key dimension = KeyUtils.resourceLocationToKey(FastNMS.INSTANCE.field$ResourceKey$location(FastNMS.INSTANCE.method$Level$dimension(serverLevel)));
-        Object holder = FastNMS.INSTANCE.method$Level$dimensionTypeRegistration(serverLevel);
+        Key dimension = KeyUtils.identifierToKey(ResourceKeyProxy.INSTANCE.getIdentifier(LevelProxy.INSTANCE.getDimension(serverLevel)));
+        Object holder = LevelProxy.INSTANCE.getDimensionTypeRegistration(serverLevel);
         Key dimensionType = CoreReflections.clazz$Holder$Reference.isInstance(holder)
-                ? KeyUtils.resourceLocationToKey(FastNMS.INSTANCE.method$Holder$Reference$identifier(holder))
+                ? KeyUtils.identifierToKey(ResourceKeyProxy.INSTANCE.getIdentifier(HolderProxy.ReferenceProxy.INSTANCE.getKey(holder)))
                 : null;
         List<ConditionalFeature> features = new ArrayList<>();
         for (ConditionalFeature feature : this.placedFeatures) {
@@ -288,8 +300,8 @@ public final class BukkitWorldManager implements WorldManager, Listener {
 
     private void injectWorld(CEWorld world) {
         Object serverLevel = world.world.serverWorld();
-        Object serverChunkCache = FastNMS.INSTANCE.method$ServerLevel$getChunkSource(serverLevel);
-        Object chunkMap = FastNMS.INSTANCE.field$ServerChunkCache$chunkMap(serverChunkCache);
+        Object serverChunkCache = ServerLevelProxy.INSTANCE.getChunkSource(serverLevel);
+        Object chunkMap = ServerChunkCacheProxy.INSTANCE.getChunkMap(serverChunkCache);
         FastNMS.INSTANCE.injectedWorldGen(world, chunkMap);
         if (!VersionHelper.isFolia()) {
             this.injectWorldCallback(serverLevel);
@@ -299,11 +311,16 @@ public final class BukkitWorldManager implements WorldManager, Listener {
     // 用于从实体tick列表中移除家具实体以降低遍历开销
     private void injectWorldCallback(Object serverLevel) {
         try {
-            Object entityLookup = FastNMS.INSTANCE.method$ServerLevel$getEntityLookup(serverLevel);
-            Object worldCallback = PaperReflections.methodHandle$EntityLookup$worldCallbackGetter.invokeExact(entityLookup);
+            Object entityLookup;
+            if (VersionHelper.isOrAbove1_21()) {
+                entityLookup = LevelProxy.INSTANCE.moonrise$getEntityLookup(serverLevel);
+            } else {
+                entityLookup = ServerLevelProxy.INSTANCE.getEntityLookup(serverLevel);
+            }
+            Object worldCallback = EntityLookupProxy.INSTANCE.getWorldCallback(entityLookup);
             Object injectedWorldCallback = FastNMS.INSTANCE.createInjectedEntityCallbacks(worldCallback, entityLookup);
             if (worldCallback == injectedWorldCallback) return;
-            PaperReflections.methodHandle$EntityLookup$worldCallbackSetter.invokeExact(entityLookup, injectedWorldCallback);
+            EntityLookupProxy.INSTANCE.setWorldCallback(entityLookup, injectedWorldCallback);
         } catch (Throwable e) {
             this.plugin.logger().warn( "Failed to inject world callback", e);
         }
@@ -398,10 +415,15 @@ public final class BukkitWorldManager implements WorldManager, Listener {
             }
             boolean unsaved = false;
             CESection[] ceSections = ceChunk.sections();
-            Object worldServer = FastNMS.INSTANCE.field$CraftChunk$worldServer(chunk);
-            Object chunkSource = FastNMS.INSTANCE.method$ServerLevel$getChunkSource(worldServer);
-            Object levelChunk = FastNMS.INSTANCE.method$ServerChunkCache$getChunkAtIfLoadedMainThread(chunkSource, chunk.getX(), chunk.getZ());
-            Object[] sections = FastNMS.INSTANCE.method$ChunkAccess$getSections(levelChunk);
+            Object worldServer = CraftChunkProxy.INSTANCE.getWorld(chunk);
+            Object chunkSource = ServerLevelProxy.INSTANCE.getChunkSource(worldServer);
+            Object levelChunk;
+            if (VersionHelper.isOrAbove1_21()) {
+                levelChunk = ServerChunkCacheProxy.INSTANCE.getChunkAtIfLoadedImmediately(chunkSource, chunk.getX(), chunk.getZ());
+            } else {
+                levelChunk = ServerChunkCacheProxy.INSTANCE.getChunkAtIfLoadedMainThread(chunkSource, chunk.getX(), chunk.getZ());
+            }
+            Object[] sections = ChunkAccessProxy.INSTANCE.getSections(levelChunk);
             synchronized (sections) {
                 for (int i = 0; i < ceSections.length; i++) {
                     CESection ceSection = ceSections[i];
@@ -416,7 +438,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                                         if (!customState.isEmpty()) {
                                             BlockStateWrapper wrapper = customState.restoreBlockState();
                                             if (wrapper != null) {
-                                                FastNMS.INSTANCE.method$LevelChunkSection$setBlockState(section, x, y, z, wrapper.literalObject(), false);
+                                                LevelChunkSectionProxy.INSTANCE.setBlockState(section, x, y, z, wrapper.literalObject(), false);
                                                 unsaved = true;
                                             }
                                         }
@@ -427,8 +449,12 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                     }
                 }
             }
-            if (unsaved /*&& !FastNMS.INSTANCE.method$LevelChunk$isUnsaved(levelChunk)*/) {
-                FastNMS.INSTANCE.method$LevelChunk$markUnsaved(levelChunk);
+            if (unsaved /*&& !ChunkAccessProxy.INSTANCE.isUnsaved(levelChunk)*/) {
+                if (VersionHelper.isOrAbove1_21_2()) {
+                    LevelChunkProxy.INSTANCE.markUnsaved(levelChunk);
+                } else {
+                    ChunkAccessProxy.INSTANCE.setUnsaved(levelChunk, true);
+                }
             }
             ceChunk.unload();
             ceChunk.deactivateAllBlockEntities();
@@ -437,7 +463,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
 
     public void handleChunkGenerate(CEWorld ceWorld, ChunkPos chunkPos, Object chunkAccess) {
         if (ceWorld.isChunkLoaded(chunkPos.longKey)) return;
-        Object[] sections = FastNMS.INSTANCE.method$ChunkAccess$getSections(chunkAccess);
+        Object[] sections = ChunkAccessProxy.INSTANCE.getSections(chunkAccess);
         CEChunk ceChunk;
         try {
             ceChunk = ceWorld.worldDataStorage().readNewChunkAt(ceWorld, chunkPos);
@@ -471,98 +497,98 @@ public final class BukkitWorldManager implements WorldManager, Listener {
         CEChunk ceChunk;
         try {
             ceChunk = ceWorld.worldDataStorage().readChunkAt(ceWorld, chunkPos);
-            try {
-                CESection[] ceSections = ceChunk.sections();
-                Object worldServer = FastNMS.INSTANCE.field$CraftChunk$worldServer(chunk);
-                Object chunkSource = FastNMS.INSTANCE.method$ServerLevel$getChunkSource(worldServer);
-                Object lightEngine = FastNMS.INSTANCE.method$ChunkSource$getLightEngine(chunkSource);
-                Object levelChunk = FastNMS.INSTANCE.method$ServerChunkCache$getChunkAtIfLoadedMainThread(chunkSource, chunkX, chunkZ);
-                Object[] sections = FastNMS.INSTANCE.method$ChunkAccess$getSections(levelChunk);
-                synchronized (sections) {
-                    for (int i = 0; i < ceSections.length; i++) {
-                        CESection ceSection = ceSections[i];
-                        Object section = sections[i];
-                        if (Config.syncCustomBlocks()) {
-                            Object statesContainer = FastNMS.INSTANCE.field$LevelChunkSection$states(section);
-                            Object data = CoreReflections.varHandle$PalettedContainer$data.get(statesContainer);
-                            Object palette = CoreReflections.field$PalettedContainer$Data$palette.get(data);
-                            boolean requiresSync = false;
-                            if (CoreReflections.clazz$SingleValuePalette.isInstance(palette)) {
-                                Object onlyBlockState = CoreReflections.field$SingleValuePalette$value.get(palette);
-                                if (BlockStateUtils.isCustomBlock(onlyBlockState)) {
-                                    requiresSync = true;
-                                }
-                            } else if (CoreReflections.clazz$LinearPalette.isInstance(palette)) {
-                                Object[] blockStates = (Object[]) CoreReflections.field$LinearPalette$values.get(palette);
-                                for (Object blockState : blockStates) {
-                                    if (blockState != null) {
-                                        if (BlockStateUtils.isCustomBlock(blockState)) {
-                                            requiresSync = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                            } else if (CoreReflections.clazz$HashMapPalette.isInstance(palette)) {
-                                Object biMap = CoreReflections.field$HashMapPalette$values.get(palette);
-                                Object[] blockStates = (Object[]) CoreReflections.field$CrudeIncrementalIntIdentityHashBiMap$keys.get(biMap);
-                                for (Object blockState : blockStates) {
-                                    if (blockState != null) {
-                                        if (BlockStateUtils.isCustomBlock(blockState)) {
-                                            requiresSync = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                            } else {
+            CESection[] ceSections = ceChunk.sections();
+            Object worldServer = CraftChunkProxy.INSTANCE.getWorld(chunk);
+            Object chunkSource = ServerLevelProxy.INSTANCE.getChunkSource(worldServer);
+            Object lightEngine = ChunkSourceProxy.INSTANCE.getLightEngine(chunkSource);
+            Object levelChunk;
+            if (VersionHelper.isOrAbove1_21()) {
+                levelChunk = ServerChunkCacheProxy.INSTANCE.getChunkAtIfLoadedImmediately(chunkSource, chunk.getX(), chunk.getZ());
+            } else {
+                levelChunk = ServerChunkCacheProxy.INSTANCE.getChunkAtIfLoadedMainThread(chunkSource, chunk.getX(), chunk.getZ());
+            }
+            Object[] sections = ChunkAccessProxy.INSTANCE.getSections(levelChunk);
+            synchronized (sections) {
+                for (int i = 0; i < ceSections.length; i++) {
+                    CESection ceSection = ceSections[i];
+                    Object section = sections[i];
+                    if (Config.syncCustomBlocks()) {
+                        Object statesContainer = LevelChunkSectionProxy.INSTANCE.getStates(section);
+                        Object data = PalettedContainerProxy.INSTANCE.getData(statesContainer);
+                        Object palette = PalettedContainerProxy.DataProxy.INSTANCE.getPalette(data);
+                        boolean requiresSync = false;
+                        if (SingleValuePaletteProxy.CLASS.isInstance(palette)) {
+                            Object onlyBlockState = SingleValuePaletteProxy.INSTANCE.getValue(palette);
+                            if (BlockStateUtils.isCustomBlock(onlyBlockState)) {
                                 requiresSync = true;
                             }
-                            if (requiresSync) {
-                                for (int x = 0; x < 16; x++) {
-                                    for (int z = 0; z < 16; z++) {
-                                        for (int y = 0; y < 16; y++) {
-                                            Object mcState = FastNMS.INSTANCE.method$LevelChunkSection$getBlockState(section, x, y, z);
-                                            Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(mcState);
-                                            if (optionalCustomState.isPresent()) {
-                                                ceSection.setBlockState(x, y, z, optionalCustomState.get());
-                                            }
+                        } else if (LinearPaletteProxy.CLASS.isInstance(palette)) {
+                            Object[] blockStates = LinearPaletteProxy.INSTANCE.getValues(palette);
+                            for (Object blockState : blockStates) {
+                                if (blockState != null) {
+                                    if (BlockStateUtils.isCustomBlock(blockState)) {
+                                        requiresSync = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else if (HashMapPaletteProxy.CLASS.isInstance(palette)) {
+                            Object biMap = HashMapPaletteProxy.INSTANCE.getValues(palette);
+                            Object[] blockStates = CrudeIncrementalIntIdentityHashBiMapProxy.INSTANCE.getKeys(biMap);
+                            for (Object blockState : blockStates) {
+                                if (blockState != null) {
+                                    if (BlockStateUtils.isCustomBlock(blockState)) {
+                                        requiresSync = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            requiresSync = true;
+                        }
+                        if (requiresSync) {
+                            for (int x = 0; x < 16; x++) {
+                                for (int z = 0; z < 16; z++) {
+                                    for (int y = 0; y < 16; y++) {
+                                        Object mcState = LevelChunkSectionProxy.INSTANCE.getBlockState(section, x, y, z);
+                                        Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(mcState);
+                                        if (optionalCustomState.isPresent()) {
+                                            ceSection.setBlockState(x, y, z, optionalCustomState.get());
                                         }
                                     }
                                 }
                             }
                         }
-                        if (Config.restoreCustomBlocks()) {
-                            boolean isEmptyBefore = FastNMS.INSTANCE.method$LevelSection$hasOnlyAir(section);
-                            int sectionY = ceSection.sectionY;
-                            // 有自定义方块
-                            PalettedContainer<ImmutableBlockState> palettedContainer = ceSection.statesContainer();
-                            if (!palettedContainer.isEmpty()) {
-                                if (isEmptyBefore) {
-                                    FastNMS.INSTANCE.method$LightEventListener$updateSectionStatus(lightEngine, FastNMS.INSTANCE.method$SectionPos$of(chunkX, sectionY, chunkZ), false);
-                                }
-                                for (int x = 0; x < 16; x++) {
-                                    for (int z = 0; z < 16; z++) {
-                                        for (int y = 0; y < 16; y++) {
-                                            ImmutableBlockState customState = palettedContainer.get(x, y, z);
-                                            if (!customState.isEmpty() && customState.customBlockState() != null) {
-                                                Object newState = customState.customBlockState().literalObject();
-                                                Object previous = FastNMS.INSTANCE.method$LevelChunkSection$setBlockState(section, x, y, z, newState, false);
-                                                if (newState != previous && FastNMS.INSTANCE.method$LightEngine$hasDifferentLightProperties(newState, previous)) {
-                                                    FastNMS.INSTANCE.method$ThreadedLevelLightEngine$checkBlock(lightEngine, LocationUtils.toBlockPos(chunkX * 16 + x, sectionY * 16 + y, chunkZ * 16 + z));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        int finalI = i;
-                        WorldStorageInjector.injectLevelChunkSection(section, ceSection, ceChunk, new SectionPos(chunkPos.x, ceChunk.sectionY(i), chunkPos.z),
-                                (injected) -> sections[finalI] = injected);
                     }
+                    if (Config.restoreCustomBlocks()) {
+                        boolean isEmptyBefore = LevelChunkSectionProxy.INSTANCE.hasOnlyAir(section);
+                        int sectionY = ceSection.sectionY;
+                        // 有自定义方块
+                        PalettedContainer<ImmutableBlockState> palettedContainer = ceSection.statesContainer();
+                        if (!palettedContainer.isEmpty()) {
+                            if (isEmptyBefore) {
+                                LightEventListenerProxy.INSTANCE.updateSectionStatus(lightEngine, SectionPosProxy.INSTANCE.newInstance(chunkX, sectionY, chunkZ), false);
+                            }
+                            for (int x = 0; x < 16; x++) {
+                                for (int z = 0; z < 16; z++) {
+                                    for (int y = 0; y < 16; y++) {
+                                        ImmutableBlockState customState = palettedContainer.get(x, y, z);
+                                        if (!customState.isEmpty() && customState.customBlockState() != null) {
+                                            Object newState = customState.customBlockState().literalObject();
+                                            Object previous = LevelChunkSectionProxy.INSTANCE.setBlockState(section, x, y, z, newState, false);
+                                            if (newState != previous && LightUtils.hasDifferentLightProperties(newState, previous)) {
+                                                ThreadedLevelLightEngineProxy.INSTANCE.checkBlock(lightEngine, LocationUtils.toBlockPos(chunkX * 16 + x, sectionY * 16 + y, chunkZ * 16 + z));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    int finalI = i;
+                    WorldStorageInjector.injectLevelChunkSection(section, ceSection, ceChunk, new SectionPos(chunkPos.x, ceChunk.sectionY(i), chunkPos.z),
+                            (injected) -> sections[finalI] = injected);
                 }
-            } catch (ReflectiveOperationException e) {
-                this.plugin.logger().warn("Failed to restore chunk at " + chunk.getX() + " " + chunk.getZ(), e);
-                return;
             }
         } catch (IOException e) {
             this.plugin.logger().warn("Failed to read chunk tag at " + chunk.getX() + " " + chunk.getZ(), e);
@@ -573,20 +599,20 @@ public final class BukkitWorldManager implements WorldManager, Listener {
     }
 
     public class ConfiguredFeatureParser extends IdSectionConfigParser {
-        public static final String[] CONFIG_SECTION_NAME = new String[] {"configured-feature", "configured-features"};
+        public static final String[] CONFIG_SECTION_NAME = new String[] {"configured-feature", "configured-features", "configured_feature", "configured_features"};
 
         @Override
         protected void parseSection(Pack pack, Path path, String node, Key id, Map<String, Object> section) throws LocalizedException {
             Map<String, Object> processedSection = processPlacedFeature(section);
             Object feature;
             if (VersionHelper.isOrAbove1_20_5()) {
-                feature = CoreReflections.instance$ConfiguredFeature$CODEC.parse(MRegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection))
+                feature = ConfiguredFeatureProxy.CODEC.parse(MRegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection))
                         .resultOrPartial(error -> {
                             throw new LocalizedResourceConfigException("warning.config.configured_feature.invalid_feature", error);
                         })
                         .orElse(null);
             } else {
-                feature = LegacyDFUUtils.parse(CoreReflections.instance$ConfiguredFeature$CODEC, MRegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection), (error) -> {
+                feature = LegacyDFUUtils.parse(ConfiguredFeatureProxy.CODEC, MRegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection), (error) -> {
                     throw new LocalizedResourceConfigException("warning.config.configured_feature.invalid_feature", error);
                 });
             }
@@ -596,13 +622,18 @@ public final class BukkitWorldManager implements WorldManager, Listener {
         }
 
         @Override
-        public String[] sectionId() {
-            return CONFIG_SECTION_NAME;
+        public LoadingStage loadingStage() {
+            return LoadingStages.CONFIGURED_FEATURE;
         }
 
         @Override
-        public int loadingSequence() {
-            return LoadingSequence.CONFIGURED_FEATURE;
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.BLOCK);
+        }
+
+        @Override
+        public String[] sectionId() {
+            return CONFIG_SECTION_NAME;
         }
 
         @Override
@@ -612,7 +643,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
     }
 
     public class PlacedFeatureParser extends IdSectionConfigParser {
-        public static final String[] CONFIG_SECTION_NAME = new String[] {"placed-feature", "placed-features"};
+        public static final String[] CONFIG_SECTION_NAME = new String[] {"placed-feature", "placed-features", "placed_feature", "placed_features"};
         private List<ConditionalFeature> tempFeatures = null;
         private int id;
 
@@ -626,6 +657,16 @@ public final class BukkitWorldManager implements WorldManager, Listener {
         public void postProcess() {
             BukkitWorldManager.this.placedFeatures = this.tempFeatures;
             BukkitWorldManager.this.lastReloadFeatureTime = System.currentTimeMillis();
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return LoadingStages.PLACED_FEATURE;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.CONFIGURED_FEATURE);
         }
 
         @Override
@@ -643,13 +684,13 @@ public final class BukkitWorldManager implements WorldManager, Listener {
             }
             if (configuredFeature == null) {
                 if (VersionHelper.isOrAbove1_20_5()) {
-                    configuredFeature = CoreReflections.instance$ConfiguredFeature$CODEC.parse(MRegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature))
+                    configuredFeature = ConfiguredFeatureProxy.CODEC.parse(MRegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature))
                             .resultOrPartial(error -> {
                                 throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_feature", error);
                             })
                             .orElse(null);
                 } else {
-                    configuredFeature = LegacyDFUUtils.parse(CoreReflections.instance$ConfiguredFeature$CODEC, MRegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature), (error) -> {
+                    configuredFeature = LegacyDFUUtils.parse(ConfiguredFeatureProxy.CODEC, MRegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature), (error) -> {
                         throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_feature", error);
                     });
                 }
@@ -666,13 +707,13 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                 }
                 JsonElement json = GsonHelper.get().toJsonTree(map);
                 if (VersionHelper.isOrAbove1_20_5()) {
-                    return CoreReflections.instance$PlacementModifier$CODEC.parse(MRegistryOps.JSON, json)
+                    return PlacementModifierProxy.CODEC.parse(MRegistryOps.JSON, json)
                             .resultOrPartial(error -> {
                                 throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_placement", json.toString(), error);
                             })
                             .orElse(null);
                 } else {
-                    return LegacyDFUUtils.parse(CoreReflections.instance$PlacementModifier$CODEC, MRegistryOps.JSON, json, (error) -> {
+                    return LegacyDFUUtils.parse(PlacementModifierProxy.CODEC, MRegistryOps.JSON, json, (error) -> {
                         throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_placement", json.toString(), error);
                     });
                 }
@@ -680,12 +721,8 @@ public final class BukkitWorldManager implements WorldManager, Listener {
             if (placements.isEmpty()) {
                 throw new LocalizedResourceConfigException("warning.config.placed_feature.missing_placement");
             }
-            try {
-                Object placedFeature = CoreReflections.constructor$PlacedFeature.newInstance(configuredFeature, placements);
-                this.tempFeatures.add(new ConditionalFeature(this.id++, placedFeature, biomeFilter, worldFilter, environmentFilter, dimensionTypeFilter));
-            } catch (ReflectiveOperationException e) {
-                BukkitWorldManager.this.plugin.logger().warn("Failed to create placed feature '" + id + "': " + e, e);
-            }
+            Object placedFeature = PlacedFeatureProxy.INSTANCE.newInstance(configuredFeature, placements);
+            this.tempFeatures.add(new ConditionalFeature(this.id++, placedFeature, biomeFilter, worldFilter, environmentFilter, dimensionTypeFilter));
         }
 
         @Override
@@ -696,11 +733,6 @@ public final class BukkitWorldManager implements WorldManager, Listener {
         @Override
         public String[] sectionId() {
             return CONFIG_SECTION_NAME;
-        }
-
-        @Override
-        public int loadingSequence() {
-            return LoadingSequence.PLACED_FEATURE;
         }
 
         private <T> Predicate<T> parseFilter(Object config, Function<String, T> mapper) {
