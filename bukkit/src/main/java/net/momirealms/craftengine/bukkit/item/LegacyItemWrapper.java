@@ -1,7 +1,6 @@
 package net.momirealms.craftengine.bukkit.item;
 
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
+import net.momirealms.craftengine.bukkit.util.RegistryOps;
 import net.momirealms.craftengine.bukkit.util.EquipmentSlotUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.entity.EquipmentSlot;
@@ -11,6 +10,7 @@ import net.momirealms.craftengine.core.item.ItemWrapper;
 import net.momirealms.craftengine.core.util.random.RandomUtils;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.craftengine.proxy.minecraft.nbt.TagProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.nbt.Tag;
 import org.bukkit.enchantments.Enchantment;
@@ -37,11 +37,11 @@ public class LegacyItemWrapper implements ItemWrapper<ItemStack> {
     public boolean setTag(Object value, Object... path) {
         Object finalNMSTag;
         if (value instanceof Tag tag) {
-            finalNMSTag = MRegistryOps.SPARROW_NBT.convertTo(MRegistryOps.NBT, tag);
-        } else if (CoreReflections.clazz$Tag.isInstance(value)) {
+            finalNMSTag = RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, tag);
+        } else if (TagProxy.CLASS.isInstance(value)) {
             finalNMSTag = value;
         } else {
-            finalNMSTag = MRegistryOps.JAVA.convertTo(MRegistryOps.NBT, value);
+            finalNMSTag = RegistryOps.JAVA.convertTo(RegistryOps.NBT, value);
         }
 
         if (path == null || path.length == 0) {
@@ -74,13 +74,13 @@ public class LegacyItemWrapper implements ItemWrapper<ItemStack> {
     public <V> V getJavaTag(Object... path) {
         Object tag = getExactTag(path);
         if (tag == null) return null;
-        return (V) MRegistryOps.NBT.convertTo(MRegistryOps.JAVA, tag);
+        return (V) RegistryOps.NBT.convertTo(RegistryOps.JAVA, tag);
     }
 
     public Tag getNBTTag(Object... path) {
         Object tag = getExactTag(path);
         if (tag == null) return null;
-        return MRegistryOps.NBT.convertTo(MRegistryOps.SPARROW_NBT, tag);
+        return RegistryOps.NBT.convertTo(RegistryOps.SPARROW_NBT, tag);
     }
 
     public int count() {

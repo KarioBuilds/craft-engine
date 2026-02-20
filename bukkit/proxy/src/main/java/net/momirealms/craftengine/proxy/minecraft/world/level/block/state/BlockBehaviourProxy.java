@@ -7,18 +7,21 @@ import net.momirealms.craftengine.proxy.minecraft.tags.TagKeyProxy;
 import net.momirealms.craftengine.proxy.minecraft.util.RandomSourceProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.PlayerProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelAccessorProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelReaderProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlockProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.SupportTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.pathfinder.PathComputationTypeProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.phys.shape.CollisionContextProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.shapes.CollisionContextProxy;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.*;
 
 @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour")
 public interface BlockBehaviourProxy {
     BlockBehaviourProxy INSTANCE = ASMProxyFactory.create(BlockBehaviourProxy.class);
+    Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.block.state.BlockBehaviour");
 
     @FieldGetter(name = "hasCollision")
     boolean hasCollision(Object target);
@@ -71,6 +74,7 @@ public interface BlockBehaviourProxy {
     @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase")
     interface BlockStateBaseProxy extends StateHolderProxy {
         BlockStateBaseProxy INSTANCE = ASMProxyFactory.create(BlockStateBaseProxy.class);
+        Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase");
 
         @FieldGetter(name = "lightEmission")
         int getLightEmission(Object target);
@@ -234,10 +238,10 @@ public interface BlockBehaviourProxy {
         @FieldSetter(name = "cache")
         void setCache(Object target, Object cache);
 
-        @FieldGetter(name = "conditionallyFullOpaque", activeIf = "max_version=1.21.1")
+        @FieldGetter(name = {"conditionallyFullOpaque", "isConditionallyFullOpaque"}, activeIf = "max_version=1.21.1")
         boolean isConditionallyFullOpaque(Object target);
 
-        @FieldSetter(name = "conditionallyFullOpaque", activeIf = "max_version=1.21.1")
+        @FieldSetter(name = {"conditionallyFullOpaque", "isConditionallyFullOpaque"}, activeIf = "max_version=1.21.1")
         void setConditionallyFullOpaque(Object target, boolean conditionallyFullOpaque);
 
         @FieldGetter(name = "opacityIfCached", activeIf = "max_version=1.21.1")
@@ -303,6 +307,9 @@ public interface BlockBehaviourProxy {
         @MethodInvoker(name = "getDestroyProgress")
         float getDestroyProgress(Object target, @Type(clazz = PlayerProxy.class) Object player, @Type(clazz = BlockGetterProxy.class) Object world, @Type(clazz = BlockPosProxy.class) Object pos);
 
+        @MethodInvoker(name = "updateNeighbourShapes")
+        void updateNeighbourShapes(Object target, @Type(clazz = LevelAccessorProxy.class) Object world, @Type(clazz = BlockPosProxy.class) Object pos, int flags, int maxUpdateDepth);
+
         @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase$Cache")
         interface CacheProxy {
             CacheProxy INSTANCE = ASMProxyFactory.create(CacheProxy.class);
@@ -324,6 +331,7 @@ public interface BlockBehaviourProxy {
     @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour$Properties")
     interface PropertiesProxy {
         PropertiesProxy INSTANCE = ASMProxyFactory.create(PropertiesProxy.class);
+        Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.block.state.BlockBehaviour$Properties");
 
         @MethodInvoker(name = "of", isStatic = true)
         Object of();

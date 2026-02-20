@@ -4,10 +4,7 @@ import com.google.gson.JsonElement;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.momirealms.craftengine.bukkit.item.ComponentItemWrapper;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBuiltInRegistries;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
+import net.momirealms.craftengine.bukkit.util.RegistryOps;
 import net.momirealms.craftengine.bukkit.util.EnchantmentUtils;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.bukkit.util.RegistryUtils;
@@ -17,10 +14,14 @@ import net.momirealms.craftengine.core.item.ItemType;
 import net.momirealms.craftengine.core.item.data.Enchantment;
 import net.momirealms.craftengine.core.item.data.FireworkExplosion;
 import net.momirealms.craftengine.core.item.data.Trim;
+import net.momirealms.craftengine.core.item.processor.IdProcessor;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.util.*;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.craftengine.proxy.minecraft.nbt.StringTagProxy;
+import net.momirealms.craftengine.proxy.minecraft.nbt.TagProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.component.CustomDataProxy;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -44,12 +45,27 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
 
     @Override
     protected void customId(ComponentItemWrapper item, Key id) {
-        FastNMS.INSTANCE.setCustomItemId(item.getLiteralObject(), id.toString());
+        Object nmsStack = item.getLiteralObject();
+        Object customData = ItemStackProxy.INSTANCE.get(nmsStack, DataComponentTypes.CUSTOM_DATA);
+        Object tag;
+        if (customData != null) {
+            tag = CustomDataProxy.INSTANCE.copyTag(customData);
+        } else {
+            tag = CompoundTagProxy.INSTANCE.newInstance();
+        }
+        CompoundTagProxy.INSTANCE.putString(tag, IdProcessor.CRAFT_ENGINE_ID, id.asString());
+        ItemStackProxy.INSTANCE.set(nmsStack, DataComponentTypes.CUSTOM_DATA, CustomDataProxy.INSTANCE.newInstance(tag));
     }
 
     @Override
     protected Optional<Key> customId(ComponentItemWrapper item) {
-        return Optional.ofNullable(FastNMS.INSTANCE.getCustomItemId(item.getLiteralObject())).map(Key::of);
+        Object nmsStack = item.getLiteralObject();
+        Object customData = ItemStackProxy.INSTANCE.get(nmsStack, DataComponentTypes.CUSTOM_DATA);
+        if (customData == null) return Optional.empty();
+        Object tag = CustomDataProxy.INSTANCE.getTag(customData);
+        Object stringTag = CompoundTagProxy.INSTANCE.get(tag, IdProcessor.CRAFT_ENGINE_ID);
+        if (stringTag == null) return Optional.empty();
+        return Optional.of(Key.of(StringTagProxy.INSTANCE.getData(stringTag)));
     }
 
     @Override
@@ -126,12 +142,12 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
         if (value instanceof Tag tag) {
             valueTag = tag;
         } else if (value instanceof JsonElement je) {
-            valueTag = MRegistryOps.JSON.convertTo(MRegistryOps.SPARROW_NBT, je);
-        } else if (CoreReflections.clazz$Tag.isInstance(value)) {
-            valueTag = MRegistryOps.NBT.convertTo(MRegistryOps.SPARROW_NBT, value);
+            valueTag = RegistryOps.JSON.convertTo(RegistryOps.SPARROW_NBT, je);
+        } else if (TagProxy.CLASS.isInstance(value)) {
+            valueTag = RegistryOps.NBT.convertTo(RegistryOps.SPARROW_NBT, value);
         } else {
-            assert MRegistryOps.JAVA != null;
-            valueTag = MRegistryOps.JAVA.convertTo(MRegistryOps.SPARROW_NBT, value);
+            assert RegistryOps.JAVA != null;
+            valueTag = RegistryOps.JAVA.convertTo(RegistryOps.SPARROW_NBT, value);
         }
 
         CompoundTag rootTag = (CompoundTag) item.getSparrowNBTComponent(DataComponentTypes.CUSTOM_DATA).orElseGet(CompoundTag::new);
@@ -600,7 +616,7 @@ public class ComponentItemFactory1_20_5 extends BukkitItemFactory<ComponentItemW
     @Override
     protected ComponentItemWrapper transmuteCopy(ComponentItemWrapper item, Key newItem, int amount) {
         Object itemStack1 = item.getLiteralObject();
-        Object itemStack2 = ItemStackProxy.INSTANCE.transmuteCopy(itemStack1, RegistryUtils.getRegistryValue(MBuiltInRegistries.ITEM, KeyUtils.toIdentifier(newItem)), amount);
+        Object itemStack2 = ItemStackProxy.INSTANCE.transmuteCopy(itemStack1, RegistryUtils.getRegistryValue(BuiltInRegistriesProxy.ITEM, KeyUtils.toIdentifier(newItem)), amount);
         return new ComponentItemWrapper(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack2));
     }
 

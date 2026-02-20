@@ -4,9 +4,7 @@ import com.google.gson.JsonElement;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBuiltInRegistries;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
+import net.momirealms.craftengine.bukkit.util.RegistryOps;
 import net.momirealms.craftengine.bukkit.util.EquipmentSlotUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
@@ -22,6 +20,8 @@ import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemSt
 import net.momirealms.craftengine.proxy.minecraft.core.component.DataComponentGetterProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.component.DataComponentMapProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.component.DataComponentTypeProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
+import net.momirealms.craftengine.proxy.minecraft.nbt.TagProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.nbt.Tag;
@@ -80,7 +80,7 @@ public class ComponentItemWrapper implements ItemWrapper<ItemStack> {
     public void setComponent(Object type, final Object value) {
         if (value instanceof JsonElement jsonElement) {
             setJsonComponent(type, jsonElement);
-        } else if (CoreReflections.clazz$Tag.isInstance(value)) {
+        } else if (TagProxy.CLASS.isInstance(value)) {
             setNBTComponent(type, value);
         } else if (value instanceof Tag tag) {
             setSparrowNBTComponent(type, tag);
@@ -95,19 +95,19 @@ public class ComponentItemWrapper implements ItemWrapper<ItemStack> {
 
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getJavaComponent(Object type) {
-        return (Optional<T>) getComponentInternal(type, MRegistryOps.JAVA);
+        return (Optional<T>) getComponentInternal(type, RegistryOps.JAVA);
     }
 
     public Optional<JsonElement> getJsonComponent(Object type) {
-        return getComponentInternal(type, MRegistryOps.JSON);
+        return getComponentInternal(type, RegistryOps.JSON);
     }
 
     public Optional<Object> getNBTComponent(Object type) {
-        return getComponentInternal(type, MRegistryOps.NBT);
+        return getComponentInternal(type, RegistryOps.NBT);
     }
 
     public Optional<Tag> getSparrowNBTComponent(Object type) {
-        return getComponentInternal(type, MRegistryOps.SPARROW_NBT).map(Tag::copy);
+        return getComponentInternal(type, RegistryOps.SPARROW_NBT).map(Tag::copy);
     }
 
     private <T> Optional<T> getComponentInternal(Object type, DynamicOps<T> ops) {
@@ -149,19 +149,19 @@ public class ComponentItemWrapper implements ItemWrapper<ItemStack> {
     }
 
     public void setJavaComponent(Object type, Object value) {
-        setComponentInternal(type, MRegistryOps.JAVA, value);
+        setComponentInternal(type, RegistryOps.JAVA, value);
     }
 
     public void setJsonComponent(Object type, JsonElement value) {
-        setComponentInternal(type, MRegistryOps.JSON, value);
+        setComponentInternal(type, RegistryOps.JSON, value);
     }
 
     public void setNBTComponent(Object type, Object value) {
-        setComponentInternal(type, MRegistryOps.NBT, value);
+        setComponentInternal(type, RegistryOps.NBT, value);
     }
 
     public void setSparrowNBTComponent(Object type, Tag value) {
-        setComponentInternal(type, MRegistryOps.SPARROW_NBT, value);
+        setComponentInternal(type, RegistryOps.SPARROW_NBT, value);
     }
 
     private <T> void setComponentInternal(Object type, DynamicOps<T> ops, T value) {
@@ -185,7 +185,7 @@ public class ComponentItemWrapper implements ItemWrapper<ItemStack> {
     private Object ensureDataComponentType(Object type) {
         if (!DataComponentTypeProxy.CLASS.isInstance(type)) {
             Key key = Key.of(type.toString());
-            return RegistryUtils.getRegistryValue(MBuiltInRegistries.DATA_COMPONENT_TYPE, KeyUtils.toIdentifier(key));
+            return RegistryUtils.getRegistryValue(BuiltInRegistriesProxy.DATA_COMPONENT_TYPE, KeyUtils.toIdentifier(key));
         }
         return type;
     }

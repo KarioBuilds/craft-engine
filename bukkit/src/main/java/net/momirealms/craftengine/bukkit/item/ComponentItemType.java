@@ -4,8 +4,7 @@ import com.google.gson.JsonElement;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBuiltInRegistries;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
+import net.momirealms.craftengine.bukkit.util.RegistryOps;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.core.item.ItemType;
@@ -15,6 +14,7 @@ import net.momirealms.craftengine.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.component.DataComponentGetterProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.component.DataComponentMapProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.component.DataComponentTypeProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemProxy;
 import net.momirealms.sparrow.nbt.Tag;
 
@@ -29,7 +29,7 @@ public class ComponentItemType implements ItemType {
 
     @Override
     public Key id() {
-        return KeyUtils.identifierToKey(RegistryProxy.INSTANCE.getKey(MBuiltInRegistries.ITEM, this.item));
+        return KeyUtils.identifierToKey(RegistryProxy.INSTANCE.getKey(BuiltInRegistriesProxy.ITEM, this.item));
     }
 
     @Override
@@ -40,22 +40,22 @@ public class ComponentItemType implements ItemType {
     @SuppressWarnings("unchecked")
     @Override
     public <T> Optional<T> getJavaComponent(Object type) {
-        return (Optional<T>) getDefaultComponentInternal(type, MRegistryOps.JAVA);
+        return (Optional<T>) getDefaultComponentInternal(type, RegistryOps.JAVA);
     }
 
     @Override
     public Optional<JsonElement> getJsonComponent(Object type) {
-        return getDefaultComponentInternal(type, MRegistryOps.JSON);
+        return getDefaultComponentInternal(type, RegistryOps.JSON);
     }
 
     @Override
     public Optional<Object> getNBTComponent(Object type) {
-        return getDefaultComponentInternal(type, MRegistryOps.NBT);
+        return getDefaultComponentInternal(type, RegistryOps.NBT);
     }
 
     @Override
     public Optional<Tag> getSparrowNBTComponent(Object type) {
-        return getDefaultComponentInternal(type, MRegistryOps.SPARROW_NBT).map(Tag::copy);
+        return getDefaultComponentInternal(type, RegistryOps.SPARROW_NBT).map(Tag::copy);
     }
 
     private <T> T getDefaultComponentInternal(Object type) {
@@ -82,7 +82,7 @@ public class ComponentItemType implements ItemType {
     private Object ensureDataComponentType(Object type) {
         if (!DataComponentTypeProxy.CLASS.isInstance(type)) {
             Key key = Key.of(type.toString());
-            return RegistryUtils.getRegistryValue(MBuiltInRegistries.DATA_COMPONENT_TYPE, KeyUtils.toIdentifier(key));
+            return RegistryUtils.getRegistryValue(BuiltInRegistriesProxy.DATA_COMPONENT_TYPE, KeyUtils.toIdentifier(key));
         }
         return type;
     }

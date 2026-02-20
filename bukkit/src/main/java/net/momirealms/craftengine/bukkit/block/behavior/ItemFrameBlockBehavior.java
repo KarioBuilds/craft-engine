@@ -5,7 +5,6 @@ import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.block.entity.BukkitBlockEntityTypes;
 import net.momirealms.craftengine.bukkit.block.entity.ItemFrameBlockEntity;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.DirectionUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
@@ -91,7 +90,7 @@ public class ItemFrameBlockBehavior extends BukkitBlockBehavior implements Entit
     }
 
     private static int getSignal(Object blockState, Object blockAccess, Object pos, Object side) {
-        if (!CoreReflections.clazz$Level.isInstance(blockAccess)) {
+        if (!LevelProxy.CLASS.isInstance(blockAccess)) {
             return 0;
         }
         ImmutableBlockState state = BlockStateUtils.getOptionalCustomBlockState(blockState).orElse(null);

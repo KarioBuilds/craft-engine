@@ -10,7 +10,7 @@ import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.BukkitExistingBlock;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.UpdateOption;
+import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -36,7 +36,7 @@ import net.momirealms.craftengine.proxy.bukkit.craftbukkit.block.CraftBlockProxy
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.block.data.CraftBlockDataProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.phys.shape.CollisionContextProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.shapes.CollisionContextProxy;
 import org.bukkit.Bukkit;
 import org.bukkit.GameEvent;
 import org.bukkit.Location;
@@ -226,7 +226,7 @@ public class BlockItemBehavior extends BlockBoundItemBehavior {
     }
 
     protected boolean placeBlock(Location location, ImmutableBlockState blockState, List<BlockState> revertStates) {
-        return CraftEngineBlocks.place(location, blockState, UpdateOption.UPDATE_ALL_IMMEDIATE, false);
+        return CraftEngineBlocks.place(location, blockState, UpdateFlags.UPDATE_ALL_IMMEDIATE, false);
     }
 
     @Override

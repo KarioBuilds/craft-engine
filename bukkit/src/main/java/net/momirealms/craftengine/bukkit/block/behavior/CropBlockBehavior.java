@@ -3,13 +3,12 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.bukkit.util.ParticleUtils;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.UpdateOption;
+import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.properties.IntegerProperty;
 import net.momirealms.craftengine.core.block.properties.Property;
@@ -102,7 +101,7 @@ public class CropBlockBehavior extends BukkitBlockBehavior {
             BlockStateUtils.getOptionalCustomBlockState(state).ifPresent(customState -> {
                 int age = this.getAge(customState);
                 if (age < this.ageProperty.max && RandomUtils.generateRandomFloat(0, 1) < this.growSpeed) {
-                    LevelWriterProxy.INSTANCE.setBlock(level, pos, customState.with(this.ageProperty, age + 1).customBlockState().literalObject(), UpdateOption.UPDATE_ALL.flags());
+                    LevelWriterProxy.INSTANCE.setBlock(level, pos, customState.with(this.ageProperty, age + 1).customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
                 }
             });
         }
@@ -150,7 +149,7 @@ public class CropBlockBehavior extends BukkitBlockBehavior {
         boolean sendSwing = false;
         Object visualState = state.visualBlockState().literalObject();
         Object visualStateBlock = BlockStateUtils.getBlockOwner(visualState);
-        if (CoreReflections.clazz$BonemealableBlock.isInstance(visualStateBlock)) {
+        if (BonemealableBlockProxy.CLASS.isInstance(visualStateBlock)) {
             boolean is;
             if (VersionHelper.isOrAbove1_20_2()) {
                 is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, world.serverWorld(), LocationUtils.toBlockPos(pos), visualState);
@@ -178,7 +177,7 @@ public class CropBlockBehavior extends BukkitBlockBehavior {
         boolean sendParticles = false;
         Object visualState = customState.visualBlockState().literalObject();
         Object visualStateBlock = BlockStateUtils.getBlockOwner(visualState);
-        if (CoreReflections.clazz$BonemealableBlock.isInstance(visualStateBlock)) {
+        if (BonemealableBlockProxy.CLASS.isInstance(visualStateBlock)) {
             boolean is;
             if (VersionHelper.isOrAbove1_20_2()) {
                 is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, level, pos, visualState);
@@ -205,7 +204,7 @@ public class CropBlockBehavior extends BukkitBlockBehavior {
         if (i > maxAge) {
             i = maxAge;
         }
-        LevelWriterProxy.INSTANCE.setBlock(level, pos, customState.with(this.ageProperty, i).customBlockState().literalObject(), UpdateOption.UPDATE_ALL.flags());
+        LevelWriterProxy.INSTANCE.setBlock(level, pos, customState.with(this.ageProperty, i).customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
         if (sendParticles) {
             world.spawnParticle(ParticleUtils.HAPPY_VILLAGER, x + 0.5, y + 0.5, z + 0.5, 15, 0.25, 0.25, 0.25);
         }

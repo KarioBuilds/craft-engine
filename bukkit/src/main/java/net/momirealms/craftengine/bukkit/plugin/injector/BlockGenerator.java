@@ -13,9 +13,6 @@ import net.bytebuddy.implementation.bind.annotation.SuperCall;
 import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.momirealms.craftengine.bukkit.block.BukkitBlockShape;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBlocks;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistries;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.bukkit.util.NoteBlockChainUpdateUtils;
 import net.momirealms.craftengine.core.block.BlockShape;
@@ -29,11 +26,13 @@ import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.ObjectHolder;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.proxy.minecraft.core.DirectionProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.registries.RegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.resources.ResourceKeyProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.WorldlyContainerHolderProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlockProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.*;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.StateDefinitionProxy;
 
@@ -45,7 +44,7 @@ import java.util.concurrent.Callable;
 
 public final class BlockGenerator {
     private static final BukkitBlockShape STONE_SHAPE =
-            new BukkitBlockShape(MBlocks.STONE$defaultState, MBlocks.STONE$defaultState);
+            new BukkitBlockShape(BlocksProxy.STONE$defaultState, BlocksProxy.STONE$defaultState);
     private static MethodHandle constructor$CraftEngineBlock;
     private static Field field$CraftEngineBlock$behavior;
     private static Field field$CraftEngineBlock$shape;
@@ -58,7 +57,7 @@ public final class BlockGenerator {
         String packageWithName = BlockGenerator.class.getName();
         String generatedClassName = packageWithName.substring(0, packageWithName.lastIndexOf('.')) + ".CraftEngineBlock";
         DynamicType.Builder<?> builder = byteBuddy
-                .subclass(CoreReflections.clazz$Block, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
+                .subclass(BlockProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
                 .name(generatedClassName)
                 .defineField("behaviorHolder", ObjectHolder.class, Visibility.PUBLIC)
                 .defineField("shapeHolder", ObjectHolder.class, Visibility.PUBLIC)
@@ -66,10 +65,10 @@ public final class BlockGenerator {
                 .defineField("isClientSideTripwire", boolean.class, Visibility.PUBLIC)
                 // should always implement this interface
                 .implement(DelegatingBlock.class)
-                .implement(CoreReflections.clazz$Fallable)
-                .implement(CoreReflections.clazz$BonemealableBlock)
-                .implement(CoreReflections.clazz$SimpleWaterloggedBlock)
-                .implement(CoreReflections.clazz$WorldlyContainerHolder)
+                .implement(FallableProxy.CLASS)
+                .implement(BonemealableBlockProxy.CLASS)
+                .implement(SimpleWaterloggedBlockProxy.CLASS)
+                .implement(WorldlyContainerHolderProxy.CLASS)
                 // internal interfaces
                 .method(ElementMatchers.named("behaviorDelegate"))
                 .intercept(FieldAccessor.ofField("behaviorHolder"))
@@ -80,128 +79,121 @@ public final class BlockGenerator {
                 .method(ElementMatchers.named("isTripwire"))
                 .intercept(FieldAccessor.ofField("isClientSideTripwire"))
                 // getShape
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$getShape))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$getShape))
                 .intercept(MethodDelegation.to(GetShapeInterceptor.INSTANCE))
                 // getCollisionShape
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$getCollisionShape))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$getCollisionShape))
                 .intercept(MethodDelegation.to(GetCollisionShapeInterceptor.INSTANCE))
                 // getSupportShape
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$getBlockSupportShape))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$getBlockSupportShape))
                 .intercept(MethodDelegation.to(GetSupportShapeInterceptor.INSTANCE))
                 // isPathFindable
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$isPathFindable))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$isPathfindable))
                 .intercept(MethodDelegation.to(IsPathFindableInterceptor.INSTANCE))
                 // mirror
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$mirror))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$mirror))
                 .intercept(MethodDelegation.to(MirrorInterceptor.INSTANCE))
                 // rotate
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$rotate))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$rotate))
                 .intercept(MethodDelegation.to(RotateInterceptor.INSTANCE))
                 // hasAnalogOutputSignal
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$hasAnalogOutputSignal))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$hasAnalogOutputSignal))
                 .intercept(MethodDelegation.to(HasAnalogOutputSignalInterceptor.INSTANCE))
                 // getAnalogOutputSignal
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$getAnalogOutputSignal))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$getAnalogOutputSignal))
                 .intercept(MethodDelegation.to(GetAnalogOutputSignalInterceptor.INSTANCE))
                 // tick
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$tick))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$tick))
                 .intercept(MethodDelegation.to(TickInterceptor.INSTANCE))
                 // isValidBoneMealTarget
-                .method(ElementMatchers.is(CoreReflections.method$BonemealableBlock$isValidBonemealTarget))
+                .method(ElementMatchers.is(BlockReflections.method$BonemealableBlock$isValidBonemealTarget))
                 .intercept(MethodDelegation.to(IsValidBoneMealTargetInterceptor.INSTANCE))
                 // getContainer
-                .method(ElementMatchers.is(CoreReflections.method$WorldlyContainerHolder$getContainer))
+                .method(ElementMatchers.is(BlockReflections.method$WorldlyContainerHolder$getContainer))
                 .intercept(MethodDelegation.to(GetContainerInterceptor.INSTANCE))
                 // isBoneMealSuccess
-                .method(ElementMatchers.is(CoreReflections.method$BonemealableBlock$isBonemealSuccess))
+                .method(ElementMatchers.is(BlockReflections.method$BonemealableBlock$isBonemealSuccess))
                 .intercept(MethodDelegation.to(IsBoneMealSuccessInterceptor.INSTANCE))
                 // performBoneMeal
-                .method(ElementMatchers.is(CoreReflections.method$BonemealableBlock$performBonemeal))
+                .method(ElementMatchers.is(BlockReflections.method$BonemealableBlock$performBonemeal))
                 .intercept(MethodDelegation.to(PerformBoneMealInterceptor.INSTANCE))
                 // random tick
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$randomTick))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$randomTick))
                 .intercept(MethodDelegation.to(RandomTickInterceptor.INSTANCE))
                 // onPlace
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$onPlace))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$onPlace))
                 .intercept(MethodDelegation.to(OnPlaceInterceptor.INSTANCE))
                 // onBrokenAfterFall
-                .method(ElementMatchers.is(CoreReflections.method$Fallable$onBrokenAfterFall))
+                .method(ElementMatchers.is(BlockReflections.method$Fallable$onBrokenAfterFall))
                 .intercept(MethodDelegation.to(OnBrokenAfterFallInterceptor.INSTANCE))
                 // onLand
-                .method(ElementMatchers.is(CoreReflections.method$Fallable$onLand))
+                .method(ElementMatchers.is(BlockReflections.method$Fallable$onLand))
                 .intercept(MethodDelegation.to(OnLandInterceptor.INSTANCE))
                 // canSurvive
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$canSurvive)
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$canSurvive)
                 )
                 .intercept(MethodDelegation.to(CanSurviveInterceptor.INSTANCE))
                 // updateShape
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$updateShape))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$updateShape))
                 .intercept(MethodDelegation.to(UpdateShapeInterceptor.INSTANCE))
                 // neighborChanged
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$neighborChanged))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$neighborChanged))
                 .intercept(MethodDelegation.to(NeighborChangedInterceptor.INSTANCE))
                 // pickupBlock
-                .method(ElementMatchers.is(CoreReflections.method$SimpleWaterloggedBlock$pickupBlock))
+                .method(ElementMatchers.is(BlockReflections.method$SimpleWaterloggedBlock$pickupBlock))
                 .intercept(MethodDelegation.to(PickUpBlockInterceptor.INSTANCE))
                 // placeLiquid
-                .method(ElementMatchers.is(CoreReflections.method$SimpleWaterloggedBlock$placeLiquid))
+                .method(ElementMatchers.is(BlockReflections.method$SimpleWaterloggedBlock$placeLiquid))
                 .intercept(MethodDelegation.to(PlaceLiquidInterceptor.INSTANCE))
                 // canPlaceLiquid
-                .method(ElementMatchers.is(CoreReflections.method$SimpleWaterloggedBlock$canPlaceLiquid))
+                .method(ElementMatchers.is(BlockReflections.method$SimpleWaterloggedBlock$canPlaceLiquid))
                 .intercept(MethodDelegation.to(CanPlaceLiquidInterceptor.INSTANCE))
                 // entityInside
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$entityInside))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$entityInside))
                 .intercept(MethodDelegation.to(EntityInsideInterceptor.INSTANCE))
                 // getSignal
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$getSignal))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$getSignal))
                 .intercept(MethodDelegation.to(GetSignalInterceptor.INSTANCE))
                 // getDirectSignal
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$getDirectSignal))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$getDirectSignal))
                 .intercept(MethodDelegation.to(GetDirectSignalInterceptor.INSTANCE))
                 // isSignalSource
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$isSignalSource))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$isSignalSource))
                 .intercept(MethodDelegation.to(IsSignalSourceInterceptor.INSTANCE))
                 // playerWillDestroy
-                .method(ElementMatchers.is(CoreReflections.method$Block$playerWillDestroy))
+                .method(ElementMatchers.is(BlockReflections.method$Block$playerWillDestroy))
                 .intercept(MethodDelegation.to(PlayerWillDestroyInterceptor.INSTANCE))
                 // spawnAfterBreak
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$spawnAfterBreak))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$spawnAfterBreak))
                 .intercept(MethodDelegation.to(SpawnAfterBreakInterceptor.INSTANCE))
                 // fallOn
-                .method(ElementMatchers.is(CoreReflections.method$Block$fallOn))
+                .method(ElementMatchers.is(BlockReflections.method$Block$fallOn))
                 .intercept(MethodDelegation.to(FallOnInterceptor.INSTANCE))
                 // updateEntityMovementAfterFallOn
-                .method(ElementMatchers.is(CoreReflections.method$Block$updateEntityMovementAfterFallOn))
+                .method(ElementMatchers.is(BlockReflections.method$Block$updateEntityMovementAfterFallOn))
                 .intercept(MethodDelegation.to(UpdateEntityMovementAfterFallOnInterceptor.INSTANCE))
                 // stepOn
-                .method(ElementMatchers.is(CoreReflections.method$Block$stepOn))
+                .method(ElementMatchers.is(BlockReflections.method$Block$stepOn))
                 .intercept(MethodDelegation.to(StepOnInterceptor.INSTANCE))
                 // onProjectileHit
-                .method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$onProjectileHit))
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$onProjectileHit))
                 .intercept(MethodDelegation.to(OnProjectileHitInterceptor.INSTANCE))
                 // setPlaceBy
-                .method(ElementMatchers.is(CoreReflections.method$Block$setPlacedBy))
+                .method(ElementMatchers.is(BlockReflections.method$Block$setPlacedBy))
                 .intercept(MethodDelegation.to(SetPlaceByInterceptor.INSTANCE))
+                // affectNeighborsAfterRemoval
+                .method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$affectNeighborsAfterRemoval))
+                .intercept(MethodDelegation.to(AffectNeighborsAfterRemovalInterceptor.INSTANCE))
                 ;
-        // 1.21.5+
-        if (CoreReflections.method$BlockBehaviour$affectNeighborsAfterRemoval != null) {
-            builder = builder.method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$affectNeighborsAfterRemoval))
-                    .intercept(MethodDelegation.to(AffectNeighborsAfterRemovalInterceptor.INSTANCE));
-        }
-        // 1.20-1.21.4
-        if (CoreReflections.method$BlockBehaviour$onRemove != null) {
-            builder = builder.method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$onRemove))
-                    .intercept(MethodDelegation.to(OnRemoveInterceptor.INSTANCE));
-        }
         // 1.21+
-        if (CoreReflections.method$BlockBehaviour$onExplosionHit != null) {
-            builder = builder.method(ElementMatchers.is(CoreReflections.method$BlockBehaviour$onExplosionHit))
+        if (BlockReflections.method$BlockBehaviour$onExplosionHit != null) {
+            builder = builder.method(ElementMatchers.is(BlockReflections.method$BlockBehaviour$onExplosionHit))
                     .intercept(MethodDelegation.to(OnExplosionHitInterceptor.INSTANCE));
         }
         Class<?> clazz$CraftEngineBlock = builder.make().load(BlockGenerator.class.getClassLoader()).getLoaded();
         constructor$CraftEngineBlock = MethodHandles.publicLookup().in(clazz$CraftEngineBlock)
-                .findConstructor(clazz$CraftEngineBlock, MethodType.methodType(void.class, CoreReflections.clazz$BlockBehaviour$Properties))
-                .asType(MethodType.methodType(CoreReflections.clazz$Block, CoreReflections.clazz$BlockBehaviour$Properties));
+                .findConstructor(clazz$CraftEngineBlock, MethodType.methodType(void.class, BlockBehaviourProxy.PropertiesProxy.CLASS))
+                .asType(MethodType.methodType(BlockProxy.CLASS, BlockBehaviourProxy.PropertiesProxy.CLASS));
         field$CraftEngineBlock$behavior = clazz$CraftEngineBlock.getField("behaviorHolder");
         field$CraftEngineBlock$shape = clazz$CraftEngineBlock.getField("shapeHolder");
         field$CraftEngineBlock$isNoteBlock = clazz$CraftEngineBlock.getField("isClientSideNoteBlock");
@@ -233,7 +225,7 @@ public final class BlockGenerator {
     private static Object createEmptyBlockProperties(Key id) {
         Object blockProperties = BlockBehaviourProxy.PropertiesProxy.INSTANCE.of();
         Object identifier = KeyUtils.toIdentifier(id);
-        Object resourceKey = ResourceKeyProxy.INSTANCE.create(MRegistries.BLOCK, identifier);
+        Object resourceKey = ResourceKeyProxy.INSTANCE.create(RegistriesProxy.BLOCK, identifier);
         if (VersionHelper.isOrAbove1_21_2()) {
             BlockBehaviourProxy.PropertiesProxy.INSTANCE.setId(blockProperties, resourceKey);
         }
@@ -252,7 +244,7 @@ public final class BlockGenerator {
             ObjectHolder<BlockBehavior> holder = ((DelegatingBlock) thisObj).behaviorDelegate();
             DelegatingBlock indicator = (DelegatingBlock) thisObj;
             // todo better chain updater
-            if (indicator.isNoteBlock() && CoreReflections.clazz$ServerLevel.isInstance(args[levelIndex])) {
+            if (indicator.isNoteBlock() && ServerLevelProxy.CLASS.isInstance(args[levelIndex])) {
                 startNoteBlockChain(args);
             }
             try {
@@ -673,20 +665,6 @@ public final class BlockGenerator {
                 holder.value().affectNeighborsAfterRemoval(thisObj, args, superMethod);
             } catch (Exception e) {
                 CraftEngine.instance().logger().severe("Failed to run affectNeighborsAfterRemoval", e);
-            }
-        }
-    }
-
-    public static class OnRemoveInterceptor {
-        public static final OnRemoveInterceptor INSTANCE = new OnRemoveInterceptor();
-
-        @RuntimeType
-        public void intercept(@This Object thisObj, @AllArguments Object[] args, @SuperCall Callable<Object> superMethod) {
-            ObjectHolder<BlockBehavior> holder = ((DelegatingBlock) thisObj).behaviorDelegate();
-            try {
-                holder.value().onRemove(thisObj, args, superMethod);
-            } catch (Exception e) {
-                CraftEngine.instance().logger().severe("Failed to run onRemove", e);
             }
         }
     }

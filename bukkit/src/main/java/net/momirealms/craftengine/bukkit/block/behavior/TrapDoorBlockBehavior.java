@@ -4,15 +4,13 @@ import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBlocks;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MFluids;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.InteractUtils;
 import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.UpdateOption;
+import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.behavior.IsPathFindableBlockBehavior;
 import net.momirealms.craftengine.core.block.properties.Property;
@@ -32,9 +30,11 @@ import net.momirealms.craftengine.proxy.bukkit.craftbukkit.block.CraftBlockProxy
 import net.momirealms.craftengine.proxy.minecraft.core.Vec3iProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.*;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlockProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlocksProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.RedstoneWireBlockProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidStateProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidsProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.pathfinder.PathComputationTypeProxy;
 import org.bukkit.Bukkit;
 import org.bukkit.GameEvent;
@@ -87,7 +87,7 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
         if (super.waterloggedProperty != null) {
             BlockStateUtils.getOptionalCustomBlockState(blockState).ifPresent(customState -> {
                 if (customState.get(super.waterloggedProperty)) {
-                    LevelUtils.scheduleFluidTick(args[updateShape$level], args[updateShape$blockPos], MFluids.WATER, 5);
+                    LevelUtils.scheduleFluidTick(args[updateShape$level], args[updateShape$blockPos], FluidsProxy.WATER, 5);
                 }
             });
         }
@@ -109,7 +109,7 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
         if (SignalGetterProxy.INSTANCE.hasNeighborSignal(level, clickedPos)) {
             state = state.with(this.poweredProperty, true).with(this.openProperty, true);
         }
-        if (this.waterloggedProperty != null && FluidStateProxy.INSTANCE.getType(BlockGetterProxy.INSTANCE.getFluidState(level, clickedPos)) == MFluids.WATER) {
+        if (this.waterloggedProperty != null && FluidStateProxy.INSTANCE.getType(BlockGetterProxy.INSTANCE.getFluidState(level, clickedPos)) == FluidsProxy.WATER) {
             state = state.with(this.waterloggedProperty, true);
         }
         return state;
@@ -192,7 +192,7 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
             Object abovePos = LocationUtils.above(blockPos);
             Object aboveBlockState = BlockGetterProxy.INSTANCE.getBlockState(level, abovePos);
             if (RedstoneWireBlockProxy.CLASS.isInstance(BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getBlock(aboveBlockState))) {
-                LevelWriterProxy.INSTANCE.setBlock(level, abovePos, MBlocks.AIR$defaultState, UpdateOption.UPDATE_ALL.flags());
+                LevelWriterProxy.INSTANCE.setBlock(level, abovePos, BlocksProxy.AIR$defaultState, UpdateFlags.UPDATE_ALL);
                 world.dropItemNaturally(
                         new Vec3d(Vec3iProxy.INSTANCE.getX(abovePos) + 0.5, Vec3iProxy.INSTANCE.getY(abovePos) + 0.5, Vec3iProxy.INSTANCE.getZ(abovePos) + 0.5),
                         BukkitItemManager.instance().createWrappedItem(ItemKeys.REDSTONE, null)
@@ -212,15 +212,15 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
             this.playSound(LocationUtils.fromBlockPos(blockPos), world, hasSignal);
         }
 
-        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, customState.with(this.poweredProperty, hasSignal).customBlockState().literalObject(), UpdateOption.Flags.UPDATE_CLIENTS);
+        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, customState.with(this.poweredProperty, hasSignal).customBlockState().literalObject(), UpdateFlags.UPDATE_CLIENTS);
         if (this.waterloggedProperty != null && customState.get(this.waterloggedProperty)) {
-            LevelUtils.scheduleFluidTick(level, blockPos, MFluids.WATER, 5);
+            LevelUtils.scheduleFluidTick(level, blockPos, FluidsProxy.WATER, 5);
         }
     }
 
     private void toggle(ImmutableBlockState state, World world, BlockPos pos, @Nullable Player player) {
         ImmutableBlockState newState = state.cycle(this.openProperty);
-        LevelWriterProxy.INSTANCE.setBlock(world.serverWorld(), LocationUtils.toBlockPos(pos), newState.customBlockState().literalObject(), UpdateOption.UPDATE_ALL.flags());
+        LevelWriterProxy.INSTANCE.setBlock(world.serverWorld(), LocationUtils.toBlockPos(pos), newState.customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
         boolean open = newState.get(this.openProperty);
         ((org.bukkit.World) world.platformWorld()).sendGameEvent(
                 player != null ? (org.bukkit.entity.Player) player.platformPlayer() : null,

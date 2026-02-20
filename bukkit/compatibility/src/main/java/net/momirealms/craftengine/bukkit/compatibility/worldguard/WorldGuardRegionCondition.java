@@ -10,7 +10,6 @@ import net.momirealms.craftengine.core.plugin.context.Condition;
 import net.momirealms.craftengine.core.plugin.context.Context;
 import net.momirealms.craftengine.core.plugin.context.condition.ConditionFactory;
 import net.momirealms.craftengine.core.plugin.context.parameter.DirectContextParameters;
-import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.util.ResourceConfigUtils;
 import net.momirealms.craftengine.core.world.WorldPosition;
@@ -24,7 +23,6 @@ import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 public final class WorldGuardRegionCondition<CTX extends Context> implements Condition<CTX> {
-    private static final Key TYPE = Key.of("worldguard:region");
     private final MatchMode mode;
     private final List<String> regions;
 

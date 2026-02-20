@@ -17,11 +17,6 @@ import net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurniture;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.gui.CraftEngineGUIHolder;
-import net.momirealms.craftengine.bukkit.plugin.network.payload.DiscardedPayload;
-import net.momirealms.craftengine.bukkit.plugin.network.payload.UnknownPayload;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MAttributeHolders;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MMobEffects;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.NetworkReflections;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.core.advancement.AdvancementType;
 import net.momirealms.craftengine.core.block.BlockStateWrapper;
@@ -57,8 +52,12 @@ import net.momirealms.craftengine.core.world.collision.AABB;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.CraftWorldProxy;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.ConnectionProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.common.ClientboundCustomPayloadPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.common.ClientboundResourcePackPopPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.common.ServerboundCustomPayloadPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.common.custom.DiscardedPayloadProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.*;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.login.ClientboundLoginDisconnectPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.MinecraftServerProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerPlayerGameModeProxy;
@@ -67,10 +66,12 @@ import net.momirealms.craftengine.proxy.minecraft.server.network.ServerCommonPac
 import net.momirealms.craftengine.proxy.minecraft.server.network.ServerGamePacketListenerImplProxy;
 import net.momirealms.craftengine.proxy.minecraft.sounds.SoundEventProxy;
 import net.momirealms.craftengine.proxy.minecraft.util.thread.BlockableEventLoopProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.effect.MobEffectsProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.LivingEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributeInstanceProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributeModifierProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributesProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.AbilitiesProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.PlayerProxy;
@@ -221,7 +222,7 @@ public class BukkitServerPlayer extends Player {
         if (channel != null) {
             for (String name : channel.pipeline().names()) {
                 ChannelHandler handler = channel.pipeline().get(name);
-                if (NetworkReflections.clazz$Connection.isInstance(handler)) {
+                if (ConnectionProxy.CLASS.isInstance(handler)) {
                     this.connection = handler;
                     break;
                 }
@@ -521,24 +522,20 @@ public class BukkitServerPlayer extends Player {
 
     @Override
     public void sendCustomPayload(Key channelId, byte[] data) {
-        try {
-            Object channelIdentifier = KeyUtils.toIdentifier(channelId);
-            Object responsePacket;
-            if (VersionHelper.isOrAbove1_20_2()) {
-                Object dataPayload;
-                if (VersionHelper.isOrAbove1_20_5()) {
-                    dataPayload = NetworkReflections.constructor$DiscardedPayload.newInstance(channelIdentifier, DiscardedPayload.useNewMethod ? data : Unpooled.wrappedBuffer(data));
-                } else {
-                    dataPayload = NetworkReflections.constructor$ServerboundCustomPayloadPacket$UnknownPayload.newInstance(channelIdentifier, UnknownPayload.isByteArray ? data : Unpooled.wrappedBuffer(data));
-                }
-                responsePacket = NetworkReflections.constructor$ClientboundCustomPayloadPacket.newInstance(dataPayload);
+        Object channelIdentifier = KeyUtils.toIdentifier(channelId);
+        Object responsePacket;
+        if (VersionHelper.isOrAbove1_20_2()) {
+            Object dataPayload;
+            if (VersionHelper.isOrAbove1_20_5()) {
+                dataPayload = DiscardedPayloadProxy.CONSTRUCTOR.newInstance(channelIdentifier, DiscardedPayloadProxy.PAPER_PATCH ? data : Unpooled.wrappedBuffer(data));
             } else {
-                responsePacket = NetworkReflections.constructor$ClientboundCustomPayloadPacket.newInstance(channelIdentifier, PacketUtils.ensureNMSFriendlyByteBuf(Unpooled.wrappedBuffer(data)));
+                dataPayload = ServerboundCustomPayloadPacketProxy.UnknownPayloadProxy.CONSTRUCTOR.newInstance(channelIdentifier, ServerboundCustomPayloadPacketProxy.UnknownPayloadProxy.PAPER_PATCH ? data : Unpooled.wrappedBuffer(data));
             }
-            this.sendPacket(responsePacket, true);
-        } catch (Exception e) {
-            CraftEngine.instance().logger().warn("Failed to send custom payload to " + name(), e);
+            responsePacket = ClientboundCustomPayloadPacketProxy.INSTANCE.newInstance(dataPayload);
+        } else {
+            responsePacket = ClientboundCustomPayloadPacketProxy.INSTANCE.newInstance(channelIdentifier, PacketUtils.ensureNMSFriendlyByteBuf(Unpooled.wrappedBuffer(data)));
         }
+        this.sendPacket(responsePacket, true);
     }
 
     @Override
@@ -548,20 +545,16 @@ public class BukkitServerPlayer extends Player {
             ConnectionProxy.INSTANCE.disconnect(this.connection(), reason);
             return;
         }
-        try {
-            if (this.encoderState == ConnectionState.LOGIN) {
-                this.sendPacket(NetworkReflections.constructor$ClientboundLoginDisconnectPacket.newInstance(reason), false);
-                ConnectionProxy.INSTANCE.disconnect(this.connection(), reason);
-                return;
-            }
-            Object kickPacket = NetworkReflections.constructor$ClientboundDisconnectPacket.newInstance(reason);
-            this.sendPacket(kickPacket, false, () -> ConnectionProxy.INSTANCE.disconnect(this.connection(), reason));
-            this.nettyChannel().config().setAutoRead(false);
-            Runnable handleDisconnection = () -> ConnectionProxy.INSTANCE.handleDisconnection(this.connection());
-            BlockableEventLoopProxy.INSTANCE.scheduleOnMain(MinecraftServerProxy.INSTANCE.getServer(), handleDisconnection);
-        } catch (Exception e) {
-            CraftEngine.instance().logger().warn("Failed to kick " + name(), e);
+        if (this.encoderState == ConnectionState.LOGIN) {
+            this.sendPacket(ClientboundLoginDisconnectPacketProxy.INSTANCE.newInstance(reason), false);
+            ConnectionProxy.INSTANCE.disconnect(this.connection(), reason);
+            return;
         }
+        Object kickPacket = ClientboundDisconnectPacketProxy.INSTANCE.newInstance(reason);
+        this.sendPacket(kickPacket, false, () -> ConnectionProxy.INSTANCE.disconnect(this.connection(), reason));
+        this.nettyChannel().config().setAutoRead(false);
+        Runnable handleDisconnection = () -> ConnectionProxy.INSTANCE.handleDisconnection(this.connection());
+        BlockableEventLoopProxy.INSTANCE.scheduleOnMain(MinecraftServerProxy.INSTANCE.getServer(), handleDisconnection);
     }
 
     @Override
@@ -864,23 +857,23 @@ public class BukkitServerPlayer extends Player {
             if (canBreak) {
                 if (VersionHelper.isOrAbove1_20_5()) {
                     Object serverPlayer = serverPlayer();
-                    Object attributeInstance = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer, MAttributeHolders.BLOCK_BREAK_SPEED);
+                    Object attributeInstance = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer, AttributesProxy.BLOCK_BREAK_SPEED);
                     sendPacket(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance(entityId(), Lists.newArrayList(attributeInstance)), true);
                 } else {
-                    resetEffect(MMobEffects.MINING_FATIGUE);
-                    resetEffect(MMobEffects.HASTE);
+                    resetEffect(MobEffectsProxy.MINING_FATIGUE);
+                    resetEffect(MobEffectsProxy.HASTE);
                 }
             } else {
                 if (VersionHelper.isOrAbove1_20_5()) {
                     Object attributeModifier = VersionHelper.isOrAbove1_21() ?
                             AttributeModifierProxy.INSTANCE.newInstance(KeyUtils.toIdentifier(Key.DEFAULT_NAMESPACE, "custom_hardness"), -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE) :
                             AttributeModifierProxy.INSTANCE.newInstance(UUID.randomUUID(), Key.DEFAULT_NAMESPACE + ":custom_hardness", -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE);
-                    Object attributeSnapshot = NetworkReflections.constructor$ClientboundUpdateAttributesPacket$AttributeSnapshot.newInstance(MAttributeHolders.BLOCK_BREAK_SPEED, 1d, Lists.newArrayList(attributeModifier));
-                    Object newPacket = NetworkReflections.constructor$ClientboundUpdateAttributesPacket1.newInstance(entityId(), Lists.newArrayList(attributeSnapshot));
+                    Object attributeSnapshot = ClientboundUpdateAttributesPacketProxy.AttributeSnapshotProxy.INSTANCE.newInstance(AttributesProxy.BLOCK_BREAK_SPEED, 1d, Lists.newArrayList(attributeModifier));
+                    Object newPacket = ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance(entityId(), Lists.newArrayList(attributeSnapshot));
                     sendPacket(newPacket, true);
                 } else {
-                    Object fatiguePacket = MobEffectUtils.createPacket(MMobEffects.MINING_FATIGUE, entityId(), (byte) 9, -1, false, false, false);
-                    Object hastePacket = MobEffectUtils.createPacket(MMobEffects.HASTE, entityId(), (byte) 0, -1, false, false, false);
+                    Object fatiguePacket = MobEffectUtils.createPacket(MobEffectsProxy.MINING_FATIGUE, entityId(), (byte) 9, -1, false, false, false);
+                    Object hastePacket = MobEffectUtils.createPacket(MobEffectsProxy.HASTE, entityId(), (byte) 0, -1, false, false, false);
                     sendPackets(List.of(fatiguePacket, hastePacket), true);
                 }
             }
@@ -939,13 +932,13 @@ public class BukkitServerPlayer extends Player {
         this.isDestroyingCustomBlock = false;
     }
 
-    private void resetEffect(Object mobEffect) throws ReflectiveOperationException {
+    private void resetEffect(Object mobEffect) {
         Object effectInstance = ServerPlayerProxy.INSTANCE.getEffect$legacy(serverPlayer(), mobEffect);
         Object packet;
         if (effectInstance != null) {
-            packet = NetworkReflections.constructor$ClientboundUpdateMobEffectPacket.newInstance(entityId(), effectInstance);
+            packet = ClientboundUpdateMobEffectPacketProxy.INSTANCE.newInstance(entityId(), effectInstance);
         } else {
-            packet = NetworkReflections.constructor$ClientboundRemoveMobEffectPacket.newInstance(entityId(), mobEffect);
+            packet = ClientboundRemoveMobEffectPacketProxy.INSTANCE.newInstance$legacy(entityId(), mobEffect);
         }
         sendPacket(packet, true);
     }
@@ -1093,7 +1086,7 @@ public class BukkitServerPlayer extends Player {
             if (this.lastUpdateInteractionRangeTick + 20 > gameTicks()) {
                 return this.cachedInteractionRange;
             }
-            Object attribute = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer(), MAttributeHolders.BLOCK_INTERACTION_RANGE);
+            Object attribute = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer(), AttributesProxy.BLOCK_INTERACTION_RANGE);
             if (attribute == null) {
                 this.cachedInteractionRange = 4.5d;
             } else {

@@ -5,11 +5,11 @@ import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.injector.WorldStorageInjector;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistryOps;
+import net.momirealms.craftengine.bukkit.util.RegistryOps;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.gen.ConditionalFeature;
 import net.momirealms.craftengine.bukkit.world.gen.CraftEngineFeatures;
+import net.momirealms.craftengine.bukkit.world.gen.InjectedChunkGenerator;
 import net.momirealms.craftengine.core.block.BlockStateWrapper;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -24,10 +24,7 @@ import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedException;
 import net.momirealms.craftengine.core.plugin.locale.LocalizedResourceConfigException;
 import net.momirealms.craftengine.core.util.*;
-import net.momirealms.craftengine.core.world.CEWorld;
-import net.momirealms.craftengine.core.world.ChunkPos;
-import net.momirealms.craftengine.core.world.SectionPos;
-import net.momirealms.craftengine.core.world.WorldManager;
+import net.momirealms.craftengine.core.world.*;
 import net.momirealms.craftengine.core.world.chunk.CEChunk;
 import net.momirealms.craftengine.core.world.chunk.CESection;
 import net.momirealms.craftengine.core.world.chunk.PalettedContainer;
@@ -38,12 +35,14 @@ import net.momirealms.craftengine.proxy.bukkit.craftbukkit.CraftChunkProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.HolderProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.SectionPosProxy;
 import net.momirealms.craftengine.proxy.minecraft.resources.ResourceKeyProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ChunkMapProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ThreadedLevelLightEngineProxy;
 import net.momirealms.craftengine.proxy.minecraft.util.CrudeIncrementalIntIdentityHashBiMapProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.chunk.*;
+import net.momirealms.craftengine.proxy.minecraft.world.level.chunk.status.WorldGenContextProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.feature.ConfiguredFeatureProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.placement.PlacedFeatureProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.levelgen.placement.PlacementModifierProxy;
@@ -118,7 +117,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
         String name = world.getName();
         Key dimension = KeyUtils.identifierToKey(ResourceKeyProxy.INSTANCE.getIdentifier(LevelProxy.INSTANCE.getDimension(serverLevel)));
         Object holder = LevelProxy.INSTANCE.getDimensionTypeRegistration(serverLevel);
-        Key dimensionType = CoreReflections.clazz$Holder$Reference.isInstance(holder)
+        Key dimensionType = HolderProxy.ReferenceProxy.CLASS.isInstance(holder)
                 ? KeyUtils.identifierToKey(ResourceKeyProxy.INSTANCE.getIdentifier(HolderProxy.ReferenceProxy.INSTANCE.getKey(holder)))
                 : null;
         List<ConditionalFeature> features = new ArrayList<>();
@@ -302,7 +301,42 @@ public final class BukkitWorldManager implements WorldManager, Listener {
         Object serverLevel = world.world.serverWorld();
         Object serverChunkCache = ServerLevelProxy.INSTANCE.getChunkSource(serverLevel);
         Object chunkMap = ServerChunkCacheProxy.INSTANCE.getChunkMap(serverChunkCache);
-        FastNMS.INSTANCE.injectedWorldGen(world, chunkMap);
+        if (VersionHelper.isOrAbove1_21_2()) {
+            Object worldGenContext = ChunkMapProxy.INSTANCE.getWorldGenContext(chunkMap);
+            Object previousGenerator = WorldGenContextProxy.INSTANCE.getGenerator(worldGenContext);
+            if (!(previousGenerator instanceof InjectedChunkGenerator)) {
+                InjectedChunkGenerator customGenerator = FastNMS.INSTANCE.createInjectedChunkGenerator(world, previousGenerator);
+                worldGenContext = WorldGenContextProxy.INSTANCE.newInstance(
+                        WorldGenContextProxy.INSTANCE.getLevel(worldGenContext),
+                        customGenerator,
+                        WorldGenContextProxy.INSTANCE.getStructureManager(worldGenContext),
+                        WorldGenContextProxy.INSTANCE.getLightEngine(worldGenContext),
+                        WorldGenContextProxy.INSTANCE.getMainThreadExecutor(worldGenContext),
+                        WorldGenContextProxy.INSTANCE.getUnsavedListener(worldGenContext)
+                );
+                ChunkMapProxy.INSTANCE.setWorldGenContext(chunkMap, worldGenContext);
+            }
+        } else if (VersionHelper.isOrAbove1_21()) {
+            Object worldGenContext = ChunkMapProxy.INSTANCE.getWorldGenContext(chunkMap);
+            Object previousGenerator = WorldGenContextProxy.INSTANCE.getGenerator(worldGenContext);
+            if (!(previousGenerator instanceof InjectedChunkGenerator)) {
+                InjectedChunkGenerator customGenerator = FastNMS.INSTANCE.createInjectedChunkGenerator(world, previousGenerator);
+                worldGenContext = WorldGenContextProxy.INSTANCE.newInstance(
+                        WorldGenContextProxy.INSTANCE.getLevel(worldGenContext),
+                        customGenerator,
+                        WorldGenContextProxy.INSTANCE.getStructureManager(worldGenContext),
+                        WorldGenContextProxy.INSTANCE.getLightEngine(worldGenContext),
+                        WorldGenContextProxy.INSTANCE.getMainThreadMailBox(worldGenContext)
+                );
+                ChunkMapProxy.INSTANCE.setWorldGenContext(chunkMap, worldGenContext);
+            }
+        } else {
+            Object generator = ChunkMapProxy.INSTANCE.getGenerator(chunkMap);
+            if (!(generator instanceof InjectedChunkGenerator)) {
+                InjectedChunkGenerator customGenerator = FastNMS.INSTANCE.createInjectedChunkGenerator(world, generator);
+                ChunkMapProxy.INSTANCE.setGenerator(chunkMap, customGenerator);
+            }
+        }
         if (!VersionHelper.isFolia()) {
             this.injectWorldCallback(serverLevel);
         }
@@ -310,19 +344,16 @@ public final class BukkitWorldManager implements WorldManager, Listener {
 
     // 用于从实体tick列表中移除家具实体以降低遍历开销
     private void injectWorldCallback(Object serverLevel) {
-        try {
-            Object entityLookup;
-            if (VersionHelper.isOrAbove1_21()) {
-                entityLookup = LevelProxy.INSTANCE.moonrise$getEntityLookup(serverLevel);
-            } else {
-                entityLookup = ServerLevelProxy.INSTANCE.getEntityLookup(serverLevel);
-            }
-            Object worldCallback = EntityLookupProxy.INSTANCE.getWorldCallback(entityLookup);
-            Object injectedWorldCallback = FastNMS.INSTANCE.createInjectedEntityCallbacks(worldCallback, entityLookup);
-            if (worldCallback == injectedWorldCallback) return;
+        Object entityLookup;
+        if (VersionHelper.isOrAbove1_21()) {
+            entityLookup = LevelProxy.INSTANCE.moonrise$getEntityLookup(serverLevel);
+        } else {
+            entityLookup = ServerLevelProxy.INSTANCE.getEntityLookup(serverLevel);
+        }
+        Object worldCallback = EntityLookupProxy.INSTANCE.getWorldCallback(entityLookup);
+        if (!(worldCallback instanceof InjectedWorldCallback)) {
+            Object injectedWorldCallback = FastNMS.INSTANCE.createInjectedWorldCallbacks(worldCallback, entityLookup);
             EntityLookupProxy.INSTANCE.setWorldCallback(entityLookup, injectedWorldCallback);
-        } catch (Throwable e) {
-            this.plugin.logger().warn( "Failed to inject world callback", e);
         }
     }
 
@@ -428,7 +459,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                 for (int i = 0; i < ceSections.length; i++) {
                     CESection ceSection = ceSections[i];
                     Object section = sections[i];
-                    WorldStorageInjector.uninjectLevelChunkSection(section);
+                    WorldStorageInjector.uninject(section);
                     if (Config.restoreVanillaBlocks()) {
                         if (!ceSection.statesContainer().isEmpty()) {
                             for (int x = 0; x < 16; x++) {
@@ -473,7 +504,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                     CESection ceSection = ceSections[i];
                     Object section = sections[i];
                     int finalI = i;
-                    WorldStorageInjector.injectLevelChunkSection(section, ceSection, ceChunk, new SectionPos(chunkPos.x, ceChunk.sectionY(i), chunkPos.z),
+                    WorldStorageInjector.inject(section, ceSection, ceChunk, new SectionPos(chunkPos.x, ceChunk.sectionY(i), chunkPos.z),
                             (injected) -> sections[finalI] = injected);
                 }
             }
@@ -586,7 +617,7 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                         }
                     }
                     int finalI = i;
-                    WorldStorageInjector.injectLevelChunkSection(section, ceSection, ceChunk, new SectionPos(chunkPos.x, ceChunk.sectionY(i), chunkPos.z),
+                    WorldStorageInjector.inject(section, ceSection, ceChunk, new SectionPos(chunkPos.x, ceChunk.sectionY(i), chunkPos.z),
                             (injected) -> sections[finalI] = injected);
                 }
             }
@@ -606,13 +637,13 @@ public final class BukkitWorldManager implements WorldManager, Listener {
             Map<String, Object> processedSection = processPlacedFeature(section);
             Object feature;
             if (VersionHelper.isOrAbove1_20_5()) {
-                feature = ConfiguredFeatureProxy.CODEC.parse(MRegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection))
+                feature = ConfiguredFeatureProxy.CODEC.parse(RegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection))
                         .resultOrPartial(error -> {
                             throw new LocalizedResourceConfigException("warning.config.configured_feature.invalid_feature", error);
                         })
                         .orElse(null);
             } else {
-                feature = LegacyDFUUtils.parse(ConfiguredFeatureProxy.CODEC, MRegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection), (error) -> {
+                feature = LegacyDFUUtils.parse(ConfiguredFeatureProxy.CODEC, RegistryOps.JSON, GsonHelper.get().toJsonTree(processedSection), (error) -> {
                     throw new LocalizedResourceConfigException("warning.config.configured_feature.invalid_feature", error);
                 });
             }
@@ -684,13 +715,13 @@ public final class BukkitWorldManager implements WorldManager, Listener {
             }
             if (configuredFeature == null) {
                 if (VersionHelper.isOrAbove1_20_5()) {
-                    configuredFeature = ConfiguredFeatureProxy.CODEC.parse(MRegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature))
+                    configuredFeature = ConfiguredFeatureProxy.CODEC.parse(RegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature))
                             .resultOrPartial(error -> {
                                 throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_feature", error);
                             })
                             .orElse(null);
                 } else {
-                    configuredFeature = LegacyDFUUtils.parse(ConfiguredFeatureProxy.CODEC, MRegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature), (error) -> {
+                    configuredFeature = LegacyDFUUtils.parse(ConfiguredFeatureProxy.CODEC, RegistryOps.JSON, GsonHelper.get().toJsonTree(rawFeature), (error) -> {
                         throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_feature", error);
                     });
                 }
@@ -707,13 +738,13 @@ public final class BukkitWorldManager implements WorldManager, Listener {
                 }
                 JsonElement json = GsonHelper.get().toJsonTree(map);
                 if (VersionHelper.isOrAbove1_20_5()) {
-                    return PlacementModifierProxy.CODEC.parse(MRegistryOps.JSON, json)
+                    return PlacementModifierProxy.CODEC.parse(RegistryOps.JSON, json)
                             .resultOrPartial(error -> {
                                 throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_placement", json.toString(), error);
                             })
                             .orElse(null);
                 } else {
-                    return LegacyDFUUtils.parse(PlacementModifierProxy.CODEC, MRegistryOps.JSON, json, (error) -> {
+                    return LegacyDFUUtils.parse(PlacementModifierProxy.CODEC, RegistryOps.JSON, json, (error) -> {
                         throw new LocalizedResourceConfigException("warning.config.placed_feature.invalid_placement", json.toString(), error);
                     });
                 }

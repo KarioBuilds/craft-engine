@@ -2,7 +2,6 @@ package net.momirealms.craftengine.bukkit.item.factory;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.momirealms.craftengine.bukkit.item.LegacyItemWrapper;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MBuiltInRegistries;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.core.attribute.AttributeModifier;
@@ -17,7 +16,9 @@ import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.SkullUtils;
 import net.momirealms.craftengine.core.util.UUIDUtils;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.craftengine.proxy.minecraft.nbt.StringTagProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
@@ -78,14 +79,19 @@ public class UniversalItemFactory extends BukkitItemFactory<LegacyItemWrapper> {
 
     @Override
     protected Optional<Key> customId(LegacyItemWrapper item) {
-        Object id = item.getJavaTag(IdProcessor.CRAFT_ENGINE_ID);
-        if (id == null) return Optional.empty();
-        return Optional.of(Key.of(id.toString()));
+        Object nmsStack = item.getLiteralObject();
+        Object tag = ItemStackProxy.INSTANCE.getTag(nmsStack);
+        if (tag == null) return Optional.empty();
+        Object stringTag = CompoundTagProxy.INSTANCE.get(tag, IdProcessor.CRAFT_ENGINE_ID);
+        if (stringTag == null) return Optional.empty();
+        return Optional.of(Key.of(StringTagProxy.INSTANCE.getData(stringTag)));
     }
 
     @Override
     protected void customId(LegacyItemWrapper item, Key id) {
-        item.setTag(id.toString(), IdProcessor.CRAFT_ENGINE_ID);
+        Object nmsStack = item.getLiteralObject();
+        Object tag = ItemStackProxy.INSTANCE.getOrCreateTag(nmsStack);
+        CompoundTagProxy.INSTANCE.putString(tag, IdProcessor.CRAFT_ENGINE_ID, id.asString());
     }
 
     @Override
@@ -381,7 +387,7 @@ public class UniversalItemFactory extends BukkitItemFactory<LegacyItemWrapper> {
 
     @Override
     protected LegacyItemWrapper transmuteCopy(LegacyItemWrapper item, Key newItem, int amount) {
-        Object copied = ItemStackProxy.INSTANCE.newInstance(RegistryUtils.getRegistryValue(MBuiltInRegistries.ITEM, KeyUtils.toIdentifier(newItem)), amount);
+        Object copied = ItemStackProxy.INSTANCE.newInstance(RegistryUtils.getRegistryValue(BuiltInRegistriesProxy.ITEM, KeyUtils.toIdentifier(newItem)), amount);
         Object copiedTag = ItemStackProxy.INSTANCE.getOrCreateTag(copied);
         Object thisTag = ItemStackProxy.INSTANCE.getOrCreateTag(item.getLiteralObject());
         CompoundTagProxy.INSTANCE.merge(copiedTag, thisTag);

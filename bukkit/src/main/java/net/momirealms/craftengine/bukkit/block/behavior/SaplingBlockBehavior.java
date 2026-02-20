@@ -3,13 +3,11 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MRegistries;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.UpdateOption;
+import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.properties.IntegerProperty;
 import net.momirealms.craftengine.core.block.properties.Property;
@@ -29,6 +27,7 @@ import net.momirealms.craftengine.proxy.minecraft.core.HolderProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.RegistryAccessProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.Vec3iProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.registries.RegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
@@ -87,7 +86,7 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
             int x = Vec3iProxy.INSTANCE.getX(blockPos);
             int y = Vec3iProxy.INSTANCE.getY(blockPos);
             int z = Vec3iProxy.INSTANCE.getZ(blockPos);
-            CraftEngineBlocks.place(new Location(bukkitWorld, x, y, z), nextStage, UpdateOption.UPDATE_NONE, false);
+            CraftEngineBlocks.place(new Location(bukkitWorld, x, y, z), nextStage, UpdateFlags.UPDATE_NONE, false);
         } else {
             generateTree(world, blockPos, blockState, randomSource);
         }
@@ -97,7 +96,7 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
         Object holder = BukkitWorldManager.instance().configuredFeatureById(treeFeature());
         if (holder == null) {
             Object registryAccess = RegistryUtils.getRegistryAccess();
-            Object registry = RegistryAccessProxy.INSTANCE.lookupOrThrow(registryAccess, MRegistries.CONFIGURED_FEATURE);
+            Object registry = RegistryAccessProxy.INSTANCE.lookupOrThrow(registryAccess, RegistriesProxy.CONFIGURED_FEATURE);
             if (registry == null) return;
             Optional<Object> optionalHolder;
             if (VersionHelper.isOrAbove1_21_2()) {
@@ -115,14 +114,14 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
         Object configuredFeature = HolderProxy.INSTANCE.value(holder);
         Object fluidState = BlockGetterProxy.INSTANCE.getFluidState(world, blockPos);
         Object legacyState = FluidStateProxy.INSTANCE.createLegacyBlock(fluidState);
-        LevelWriterProxy.INSTANCE.setBlock(world, blockPos, legacyState, UpdateOption.UPDATE_NONE.flags());
+        LevelWriterProxy.INSTANCE.setBlock(world, blockPos, legacyState, UpdateFlags.UPDATE_NONE);
         if (ConfiguredFeatureProxy.INSTANCE.place(configuredFeature, world, chunkGenerator, randomSource, blockPos)) {
             if (BlockGetterProxy.INSTANCE.getBlockState(world, blockPos) == legacyState) {
-                ServerLevelProxy.INSTANCE.sendBlockUpdated(world, blockPos, blockState, legacyState, UpdateOption.Flags.UPDATE_CLIENTS);
+                ServerLevelProxy.INSTANCE.sendBlockUpdated(world, blockPos, blockState, legacyState, UpdateFlags.UPDATE_CLIENTS);
             }
         } else {
             // failed to place, rollback changes
-            LevelWriterProxy.INSTANCE.setBlock(world, blockPos, blockState, UpdateOption.UPDATE_NONE.flags());
+            LevelWriterProxy.INSTANCE.setBlock(world, blockPos, blockState, UpdateFlags.UPDATE_NONE);
         }
     }
 
@@ -140,7 +139,7 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
         boolean sendParticles = false;
         Object visualState = customState.visualBlockState().literalObject();
         Object visualStateBlock = BlockStateUtils.getBlockOwner(visualState);
-        if (CoreReflections.clazz$BonemealableBlock.isInstance(visualStateBlock)) {
+        if (BonemealableBlockProxy.CLASS.isInstance(visualStateBlock)) {
             boolean is;
             if (VersionHelper.isOrAbove1_20_2()) {
                 is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, level, blockPos, visualState);
@@ -189,7 +188,7 @@ public class SaplingBlockBehavior extends BukkitBlockBehavior {
         boolean sendSwing = false;
         Object visualState = state.visualBlockState().literalObject();
         Object visualStateBlock = BlockStateUtils.getBlockOwner(visualState);
-        if (CoreReflections.clazz$BonemealableBlock.isInstance(visualStateBlock)) {
+        if (BonemealableBlockProxy.CLASS.isInstance(visualStateBlock)) {
             boolean is;
             if (VersionHelper.isOrAbove1_20_2()) {
                 is = BonemealableBlockProxy.INSTANCE.isValidBonemealTarget(visualStateBlock, world.serverWorld(), LocationUtils.toBlockPos(pos), visualState);

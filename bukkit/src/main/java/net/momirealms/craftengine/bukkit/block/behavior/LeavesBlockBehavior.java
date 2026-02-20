@@ -1,13 +1,12 @@
 package net.momirealms.craftengine.bukkit.block.behavior;
 
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.BlockTags;
 import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.CustomBlock;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.UpdateOption;
+import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.properties.Property;
 import net.momirealms.craftengine.core.util.Direction;
@@ -95,9 +94,9 @@ public class LeavesBlockBehavior extends BukkitBlockBehavior {
                 ImmutableBlockState newState = behavior.updateDistance(customState, level, blockPos);
                 if (newState != customState) {
                     if (blockState == newState.customBlockState().literalObject()) {
-                        CoreReflections.method$BlockStateBase$updateNeighbourShapes.invoke(blockState, level, blockPos, UpdateOption.UPDATE_ALL.flags(), 512);
+                        BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.updateNeighbourShapes(blockState, level, blockPos, UpdateFlags.UPDATE_ALL, 512);
                     } else {
-                        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, newState.customBlockState().literalObject(), UpdateOption.UPDATE_ALL.flags());
+                        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, newState.customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
                     }
                 }
             }
@@ -156,7 +155,7 @@ public class LeavesBlockBehavior extends BukkitBlockBehavior {
         if (isLog) return 0;
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
         if (optionalCustomState.isEmpty()) {
-            boolean hasDistanceProperty = StateHolderProxy.INSTANCE.hasProperty(blockState, distanceProperty);
+            boolean hasDistanceProperty = StateHolderProxy.INSTANCE.hasProperty(blockState, LeavesBlockProxy.DISTANCE);
             if (!hasDistanceProperty) return this.maxDistance;
             return StateHolderProxy.INSTANCE.getValue(blockState, LeavesBlockProxy.DISTANCE);
         } else {

@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import net.momirealms.craftengine.bukkit.block.behavior.BedBlockBehavior;
 import net.momirealms.craftengine.bukkit.block.entity.BedBlockEntity;
 import net.momirealms.craftengine.bukkit.entity.data.PlayerData;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.MEntityTypes;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -20,17 +19,14 @@ import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.*;
 import net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.EquipmentSlotProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.LivingEntityProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.PoseProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.entity.*;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.GameTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.phys.AABBProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
-import net.momirealms.craftengine.proxy.minecraft.world.phys.shape.CollisionContextProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.phys.shape.VoxelShapeProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.shapes.CollisionContextProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.shapes.VoxelShapeProxy;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
@@ -181,7 +177,7 @@ public class DynamicPlayerRenderer implements DynamicBlockEntityRenderer {
         this.cachedPlayerInfoUpdatePacket = ClientboundPlayerInfoUpdatePacketProxy.INSTANCE.newInstance(ADD_PLAYER_ACTION, List.of(entry));
         this.cachedSpawnPacket = ClientboundAddEntityPacketProxy.INSTANCE.newInstance(
                 this.entityId, this.uuid, pos.x + this.offset.x, y + this.offset.y, pos.z + this.offset.z,
-                0, this.yRot, MEntityTypes.PLAYER, 0, Vec3Proxy.ZERO, this.yRot
+                0, this.yRot, EntityTypeProxy.PLAYER, 0, Vec3Proxy.ZERO, this.yRot
         );
         List<Object> metadata = new ArrayList<>(SynchedEntityDataProxy.INSTANCE.getNonDefaultValues(player.entityData()));
         this.cachedSetOccupierDataPacket = null;

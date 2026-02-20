@@ -2,7 +2,6 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.reflection.minecraft.CoreReflections;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.CustomBlock;
@@ -15,6 +14,7 @@ import net.momirealms.craftengine.core.util.ResourceConfigUtils;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.SignalGetterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
@@ -70,7 +70,7 @@ public class ToggleableLampBlockBehavior extends BukkitBlockBehavior {
         Object level = args[1];
         Object pos = args[2];
         Object oldState = args[3];
-        if (BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getBlock(oldState) != BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getBlock(state) && CoreReflections.clazz$ServerLevel.isInstance(level)) {
+        if (BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getBlock(oldState) != BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getBlock(state) && ServerLevelProxy.CLASS.isInstance(level)) {
             Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(state);
             if (optionalCustomState.isEmpty()) return;
             checkAndFlip(optionalCustomState.get(), level, pos);
@@ -82,7 +82,7 @@ public class ToggleableLampBlockBehavior extends BukkitBlockBehavior {
         if (this.poweredProperty == null) return;
         Object blockState = args[0];
         Object world = args[1];
-        if (!CoreReflections.clazz$ServerLevel.isInstance(world)) return;
+        if (!ServerLevelProxy.CLASS.isInstance(world)) return;
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
         if (optionalCustomState.isEmpty()) return;
         Object blockPos = args[2];
@@ -100,7 +100,6 @@ public class ToggleableLampBlockBehavior extends BukkitBlockBehavior {
             }
             LevelWriterProxy.INSTANCE.setBlock(level, pos, blockState.with(this.poweredProperty, hasNeighborSignal).customBlockState().literalObject(), 3);
         }
-
     }
 
     @SuppressWarnings("unchecked")
