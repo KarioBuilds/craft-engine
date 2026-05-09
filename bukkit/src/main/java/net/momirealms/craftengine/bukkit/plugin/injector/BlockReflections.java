@@ -4,6 +4,7 @@ import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.proxy.minecraft.core.BlockPosProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.DirectionProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.TypedInstanceProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.util.RandomSourceProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.WorldlyContainerHolderProxy;
@@ -16,6 +17,7 @@ import net.momirealms.craftengine.proxy.minecraft.world.entity.player.PlayerProx
 import net.momirealms.craftengine.proxy.minecraft.world.entity.projectile.ProjectileProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.*;
+import net.momirealms.craftengine.proxy.minecraft.world.level.biome.BiomeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.*;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockStateProxy;
@@ -34,6 +36,7 @@ import net.momirealms.sparrow.reflection.method.matcher.MethodMatcher;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 
 import static java.util.Objects.requireNonNull;
@@ -177,6 +180,11 @@ final class BlockReflections {
                     .and(MethodMatcher.returnType(ItemStackProxy.CLASS)))
     );
 
+    public static final Method method$SimpleWaterloggedBlock$getPickupSound = requireNonNull(
+            SparrowClass.of(SimpleWaterloggedBlockProxy.CLASS).getDeclaredMethod(MethodMatcher.named("getPickupSound")
+                    .and(MethodMatcher.returnType(Optional.class)))
+    );
+
     public static final Method method$BlockBehaviour$rotate = requireNonNull(
             SparrowClass.of(BlockBehaviourProxy.CLASS).getDeclaredMethod(MethodMatcher.named("rotate")
                     .and(MethodMatcher.takeArguments(BlockStateProxy.CLASS, RotationProxy.CLASS))
@@ -288,8 +296,8 @@ final class BlockReflections {
     );
 
     public static final Method method$BlockStateBase$is = requireNonNull(
-            SparrowClass.of(BlockBehaviourProxy.BlockStateBaseProxy.CLASS).getDeclaredMethod(MethodMatcher.named("is")
-                    .and(MethodMatcher.takeArguments(BlockProxy.CLASS))
+            SparrowClass.of((Class<?>) (VersionHelper.isOrAbove26_1() ? TypedInstanceProxy.CLASS : BlockBehaviourProxy.BlockStateBaseProxy.CLASS)).getDeclaredMethod(MethodMatcher.named("is")
+                    .and(MethodMatcher.takeArguments(VersionHelper.isOrAbove26_1() ? Object.class : BlockProxy.CLASS))
                     .and(MethodMatcher.returnType(boolean.class)))
     );
 
@@ -302,6 +310,24 @@ final class BlockReflections {
     public static final Method method$Block$setPlacedBy = requireNonNull(
             SparrowClass.of(BlockProxy.CLASS).getDeclaredMethod(MethodMatcher.named("setPlacedBy")
                     .and(MethodMatcher.takeArguments(LevelProxy.CLASS, BlockPosProxy.CLASS, BlockStateProxy.CLASS, LivingEntityProxy.CLASS, ItemStackProxy.CLASS))
+                    .and(MethodMatcher.returnType(void.class)))
+    );
+
+    public static final Method method$BlockBehaviour$attack = requireNonNull(
+            SparrowClass.of(BlockBehaviourProxy.CLASS).getDeclaredMethod(MethodMatcher.named("attack")
+                    .and(MethodMatcher.takeArguments(BlockStateProxy.CLASS, LevelProxy.CLASS, BlockPosProxy.CLASS, PlayerProxy.CLASS))
+                    .and(MethodMatcher.returnType(void.class)))
+    );
+
+    public static final Method method$BlockBehaviour$triggerEvent = requireNonNull(
+            SparrowClass.of(BlockBehaviourProxy.CLASS).getDeclaredMethod(MethodMatcher.named("triggerEvent")
+                    .and(MethodMatcher.takeArguments(BlockStateProxy.CLASS, LevelProxy.CLASS, BlockPosProxy.CLASS, int.class, int.class))
+                    .and(MethodMatcher.returnType(boolean.class)))
+    );
+
+    public static final Method method$Block$handlePrecipitation = requireNonNull(
+            SparrowClass.of(BlockProxy.CLASS).getDeclaredMethod(MethodMatcher.named("handlePrecipitation")
+                    .and(MethodMatcher.takeArguments(BlockStateProxy.CLASS, LevelProxy.CLASS, BlockPosProxy.CLASS, BiomeProxy.PrecipitationProxy.CLASS))
                     .and(MethodMatcher.returnType(void.class)))
     );
 

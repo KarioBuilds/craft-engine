@@ -3,10 +3,10 @@ package net.momirealms.craftengine.core.plugin.context;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.Manageable;
 import net.momirealms.craftengine.core.plugin.config.ConfigParser;
-import net.momirealms.craftengine.core.plugin.config.IdObjectConfigParser;
+import net.momirealms.craftengine.core.plugin.config.ConfigValue;
+import net.momirealms.craftengine.core.plugin.config.IdValueConfigParser;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
-import net.momirealms.craftengine.core.plugin.locale.LocalizedException;
 import net.momirealms.craftengine.core.util.Key;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,7 +18,7 @@ import java.util.Map;
 
 public final class GlobalVariableManager implements Manageable {
     public static final GlobalVariableManager INSTANCE = new GlobalVariableManager();
-    private final Map<String, String> globalVariables = new HashMap<>();
+    private final Map<String, String> globalVariables = new HashMap<>(256, 0.5f);
     private final GlobalVariableParser parser = new GlobalVariableParser();
 
     private GlobalVariableManager() {
@@ -46,8 +46,11 @@ public final class GlobalVariableManager implements Manageable {
         return this.parser;
     }
 
-    public class GlobalVariableParser extends IdObjectConfigParser {
-        public static final String[] CONFIG_SECTION_NAME = new String[] {"global-variables", "global-variable", "global_variables", "global_variable"};
+    private final class GlobalVariableParser extends IdValueConfigParser {
+        public static final String[] CONFIG_SECTION_NAME = new String[] {
+                "global-variables", "global-variable",
+                "global_variables", "global_variable"
+        };
 
         @Override
         public String[] sectionId() {
@@ -60,10 +63,8 @@ public final class GlobalVariableManager implements Manageable {
         }
 
         @Override
-        public void parseObject(Pack pack, Path path, String node, Key id, Object object) throws LocalizedException {
-            if (object != null) {
-                GlobalVariableManager.this.globalVariables.put(id.value(), object.toString());
-            }
+        public void parseValue(Pack pack, Path filePath, Key id, ConfigValue value) {
+            GlobalVariableManager.this.globalVariables.put(id.value(), value.getAsString());
         }
 
         @Override

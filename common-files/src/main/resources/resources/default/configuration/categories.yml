@@ -112,3 +112,7 @@ categories:
       - default:magma_fruit
       - default:globe
       - default:drill
+      - default:showcase
+      - default:togglable_light_block
+      - default:drawer_block
+      - default:candelabrum

@@ -8,7 +8,7 @@ import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.AllArguments;
+import net.bytebuddy.implementation.bind.annotation.Argument;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
@@ -16,12 +16,12 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
 import net.momirealms.craftengine.bukkit.util.ItemTags;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.item.ItemDefinition;
 import net.momirealms.craftengine.core.item.ItemKeys;
-import net.momirealms.craftengine.core.item.data.FireworkExplosion;
+import net.momirealms.craftengine.core.item.component.DataComponentKeys;
+import net.momirealms.craftengine.core.item.component.value.FireworkExplosion;
 import net.momirealms.craftengine.core.util.*;
-import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.HolderLookupProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.RegistryAccessProxy;
 import net.momirealms.craftengine.proxy.minecraft.resources.IdentifierProxy;
@@ -30,26 +30,32 @@ import net.momirealms.craftengine.proxy.minecraft.world.inventory.CraftingContai
 import net.momirealms.craftengine.proxy.minecraft.world.item.*;
 import net.momirealms.craftengine.proxy.minecraft.world.item.crafting.*;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
-import org.bukkit.inventory.ItemStack;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.constructor.matcher.ConstructorMatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 public final class RecipeInjector {
-    private static Class<?> clazz$InjectedArmorDyeRecipe;
-    private static Class<?> clazz$InjectedRepairItemRecipe;
-    private static Class<?> clazz$InjectedFireworkStarFadeRecipe;
+    public static final Key ARMOR_DYE = Key.of("armor_dye");
+    public static final Key REPAIR_ITEM = Key.of("repair_item");
+    public static final Key FIREWORK_STAR_FADE = Key.of("firework_star_fade");
+    public static Object ARMOR_DYE_RECIPE;  // 1.21.11-
+    public static Object FIREWORK_STAR_FADE_RECIPE;  // 1.21.11-
+    public static Object REPAIR_ITEM_RECIPE;
+    public static Constructor<?> FIREWORK_STAR_FADE_RECIPE_CONSTRUCTOR; // 26.1+
 
     private RecipeInjector() {}
 
-    public static void init() {
+    public static void init() throws ReflectiveOperationException {
         ByteBuddy byteBuddy = new ByteBuddy(ClassFileVersion.JAVA_V17);
 
         ElementMatcher.Junction<MethodDescription> matches = (VersionHelper.isOrAbove1_21() ?
@@ -57,36 +63,16 @@ public final class RecipeInjector {
                 ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, LevelProxy.CLASS)
         ).and(ElementMatchers.returns(boolean.class));
         ElementMatcher.Junction<MethodDescription> assemble = (
+                VersionHelper.isOrAbove26_1() ?
+                ElementMatchers.takesArguments(CraftingInputProxy.CLASS) :
                 VersionHelper.isOrAbove1_21() ?
-                        ElementMatchers.takesArguments(CraftingInputProxy.CLASS, HolderLookupProxy.ProviderProxy.CLASS) :
-                        VersionHelper.isOrAbove1_20_5() ?
-                                ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, HolderLookupProxy.ProviderProxy.CLASS) :
-                                ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, RegistryAccessProxy.CLASS)
+                ElementMatchers.takesArguments(CraftingInputProxy.CLASS, HolderLookupProxy.ProviderProxy.CLASS) :
+                VersionHelper.isOrAbove1_20_5() ?
+                ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, HolderLookupProxy.ProviderProxy.CLASS) :
+                ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, RegistryAccessProxy.CLASS)
         ).and(ElementMatchers.returns(ItemStackProxy.CLASS));
 
-        clazz$InjectedArmorDyeRecipe = byteBuddy
-                .subclass(ArmorDyeRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
-                .name("net.momirealms.craftengine.bukkit.item.recipe.ArmorDyeRecipe")
-                .method(matches)
-                .intercept(MethodDelegation.to(DyeMatchesInterceptor.INSTANCE))
-                .method(assemble)
-                .intercept(MethodDelegation.to(DyeAssembleInterceptor.INSTANCE))
-                .make()
-                .load(RecipeInjector.class.getClassLoader())
-                .getLoaded();
-
-        clazz$InjectedFireworkStarFadeRecipe = byteBuddy
-                .subclass(FireworkStarFadeRecipeProxy.CLASS)
-                .name("net.momirealms.craftengine.bukkit.item.recipe.FireworkStarFadeRecipe")
-                .method(matches)
-                .intercept(MethodDelegation.to(FireworkStarFadeMatchesInterceptor.INSTANCE))
-                .method(assemble)
-                .intercept(MethodDelegation.to(FireworkStarFadeAssembleInterceptor.INSTANCE))
-                .make()
-                .load(RecipeInjector.class.getClassLoader())
-                .getLoaded();
-
-        clazz$InjectedRepairItemRecipe = byteBuddy
+        Class<?> clazz$InjectedRepairItemRecipe = byteBuddy
                 .subclass(RepairItemRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
                 .name("net.momirealms.craftengine.bukkit.item.recipe.RepairItemRecipe")
                 // 只修改match逻辑，合并需要在事件里处理，否则无法应用变量
@@ -95,27 +81,64 @@ public final class RecipeInjector {
                 .make()
                 .load(RecipeInjector.class.getClassLoader())
                 .getLoaded();
-    }
+        REPAIR_ITEM_RECIPE = createSpecialRecipe(REPAIR_ITEM, clazz$InjectedRepairItemRecipe);
 
-    public static Object createRepairItemRecipe(Key id) throws ReflectiveOperationException {
-        return createSpecialRecipe(id, clazz$InjectedRepairItemRecipe);
-    }
+        // 26.1 以上的染色配方直接注册，无需特殊配方
+        if (!VersionHelper.isOrAbove26_1()) {
+            Class<?> clazz$InjectedArmorDyeRecipe = byteBuddy
+                    .subclass(ArmorDyeRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
+                    .name("net.momirealms.craftengine.bukkit.item.recipe.DyeRecipe")
+                    .method(matches)
+                    .intercept(MethodDelegation.to(DyeMatchesInterceptor.INSTANCE))
+                    .method(assemble)
+                    .intercept(MethodDelegation.to(DyeAssembleInterceptor.INSTANCE))
+                    .make()
+                    .load(RecipeInjector.class.getClassLoader())
+                    .getLoaded();
+            ARMOR_DYE_RECIPE = createSpecialRecipe(ARMOR_DYE, clazz$InjectedArmorDyeRecipe);
 
-    public static Object createCustomDyeRecipe(Key id) throws ReflectiveOperationException {
-        return createSpecialRecipe(id, clazz$InjectedArmorDyeRecipe);
-    }
+            Class<?> clazz$InjectedFireworkStarFadeRecipe = byteBuddy
+                    .subclass(FireworkStarFadeRecipeProxy.CLASS)
+                    .name("net.momirealms.craftengine.bukkit.item.recipe.FireworkStarFadeRecipe")
+                    .method(matches)
+                    .intercept(MethodDelegation.to(FireworkStarFadeMatchesInterceptor.INSTANCE))
+                    .method(assemble)
+                    .intercept(MethodDelegation.to(FireworkStarFadeAssembleInterceptor.INSTANCE))
+                    .make()
+                    .load(RecipeInjector.class.getClassLoader())
+                    .getLoaded();
+            FIREWORK_STAR_FADE_RECIPE = createSpecialRecipe(FIREWORK_STAR_FADE, clazz$InjectedFireworkStarFadeRecipe);
+        }
 
-    public static Object createFireworkStarFadeRecipe(Key id) throws ReflectiveOperationException {
-        return createSpecialRecipe(id, clazz$InjectedFireworkStarFadeRecipe);
+        if (VersionHelper.isOrAbove26_1()) {
+            Class<?> clazz$InjectedFireworkStarFadeRecipe = byteBuddy
+                    .subclass(FireworkStarFadeRecipeProxy.CLASS)
+                    .name("net.momirealms.craftengine.bukkit.item.recipe.FireworkStarFadeRecipe")
+                    .method(matches)
+                    .intercept(MethodDelegation.to(FireworkStarFadeMatchesInterceptor.INSTANCE))
+                    .method(assemble)
+                    .intercept(MethodDelegation.to(FireworkStarFadeAssembleInterceptor.INSTANCE))
+                    .make()
+                    .load(RecipeInjector.class.getClassLoader())
+                    .getLoaded();
+            FIREWORK_STAR_FADE_RECIPE_CONSTRUCTOR = SparrowClass.of(clazz$InjectedFireworkStarFadeRecipe)
+                    .getConstructor(ConstructorMatcher.takeArguments(IngredientProxy.CLASS, IngredientProxy.CLASS, ItemStackTemplateProxy.CLASS));
+        }
     }
 
     @NotNull
-    private static Object createSpecialRecipe(Key id, Class<?> clazz$InjectedRepairItemRecipe) throws InstantiationException, IllegalAccessException, java.lang.reflect.InvocationTargetException {
-        if (VersionHelper.isOrAbove1_20_2()) {
-            Constructor<?> constructor = ReflectionUtils.getConstructor(clazz$InjectedRepairItemRecipe, CraftingBookCategoryProxy.CLASS);
+    private static Object createSpecialRecipe(Key id, Class<?> clazz) throws InstantiationException, IllegalAccessException, java.lang.reflect.InvocationTargetException {
+        if (VersionHelper.isOrAbove26_1()) {
+            Constructor<?> constructor = ReflectionUtils.getConstructor(clazz);
+            assert constructor != null;
+            return constructor.newInstance();
+        } else if (VersionHelper.isOrAbove1_20_2()) {
+            Constructor<?> constructor = ReflectionUtils.getConstructor(clazz, CraftingBookCategoryProxy.CLASS);
+            assert constructor != null;
             return constructor.newInstance(CraftingBookCategoryProxy.MISC);
         } else {
-            Constructor<?> constructor = ReflectionUtils.getConstructor(clazz$InjectedRepairItemRecipe, IdentifierProxy.CLASS, CraftingBookCategoryProxy.CLASS);
+            Constructor<?> constructor = ReflectionUtils.getConstructor(clazz, IdentifierProxy.CLASS, CraftingBookCategoryProxy.CLASS);
+            assert constructor != null;
             return constructor.newInstance(KeyUtils.toIdentifier(id), CraftingBookCategoryProxy.MISC);
         }
     }
@@ -138,8 +161,7 @@ public final class RecipeInjector {
         public static final FireworkStarFadeMatchesInterceptor INSTANCE = new FireworkStarFadeMatchesInterceptor();
 
         @RuntimeType
-        public Object intercept(@AllArguments Object[] args) {
-            Object input = args[0];
+        public Object intercept(@Argument(value = 0) Object input) {
             if (DYE_INGREDIENT_COUNT_CHECKER.apply(input)) {
                 return false;
             }
@@ -151,7 +173,7 @@ public final class RecipeInjector {
                 if (ItemStackProxy.INSTANCE.isEmpty(itemStack)) {
                     continue;
                 }
-                Item<ItemStack> wrapped = BukkitItemManager.instance().wrap(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack));
+                Item wrapped = BukkitItemManager.instance().wrap(itemStack);
                 if (isFireworkDye(wrapped)) {
                     hasDye = true;
                 } else {
@@ -172,17 +194,16 @@ public final class RecipeInjector {
         public static final FireworkStarFadeAssembleInterceptor INSTANCE = new FireworkStarFadeAssembleInterceptor();
 
         @RuntimeType
-        public Object intercept(@AllArguments Object[] args) {
+        public Object intercept(@Argument(value = 0) Object input) {
             IntList colors = new IntArrayList();
-            Item<ItemStack> starItem = null;
-            Object input = args[0];
+            Item starItem = null;
             int size = INGREDIENT_SIZE_GETTER.apply(input);
             for (int i = 0; i < size; i++) {
                 Object itemStack = INGREDIENT_GETTER.apply(input, i);
                 if (ItemStackProxy.INSTANCE.isEmpty(itemStack)) {
                     continue;
                 }
-                Item<ItemStack> wrapped = BukkitItemManager.instance().wrap(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack));
+                Item wrapped = BukkitItemManager.instance().wrap(itemStack);
                 if (isFireworkDye(wrapped)) {
                     Color color = getFireworkColor(wrapped);
                     if (color == null) {
@@ -198,7 +219,7 @@ public final class RecipeInjector {
             }
             FireworkExplosion explosion = starItem.fireworkExplosion().orElse(FireworkExplosion.DEFAULT);
             starItem.fireworkExplosion(explosion.withFadeColors(colors));
-            return starItem.getLiteralObject();
+            return starItem.minecraftItem();
         }
     }
 
@@ -206,8 +227,7 @@ public final class RecipeInjector {
         public static final RepairMatchesInterceptor INSTANCE = new RepairMatchesInterceptor();
 
         @RuntimeType
-        public Object intercept(@AllArguments Object[] args) {
-            Object input = args[0];
+        public Object intercept(@Argument(value = 0) Object input) {
             if (REPAIR_INGREDIENT_COUNT_CHECKER.apply(input)) {
                 return false;
             }
@@ -216,16 +236,16 @@ public final class RecipeInjector {
     }
 
     @Nullable
-    private static Pair<Item<ItemStack>, Item<ItemStack>> getItemsToCombine(Object input) {
-        Item<ItemStack> item1 = null;
-        Item<ItemStack> item2 = null;
+    private static Pair<Item, Item> getItemsToCombine(Object input) {
+        Item item1 = null;
+        Item item2 = null;
         int size = INGREDIENT_SIZE_GETTER.apply(input);
         for (int i = 0; i < size; i++) {
             Object itemStack = INGREDIENT_GETTER.apply(input, i);
             if (ItemStackProxy.INSTANCE.isEmpty(itemStack)) {
                 continue;
             }
-            Item<ItemStack> wrapped = BukkitItemManager.instance().wrap(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack));
+            Item wrapped = BukkitItemManager.instance().wrap(itemStack);
             if (item1 == null) {
                 item1 = wrapped;
             } else {
@@ -244,19 +264,19 @@ public final class RecipeInjector {
         return new Pair<>(item1, item2);
     }
 
-    private static boolean canCombine(Item<ItemStack> input1, Item<ItemStack> input2) {
+    private static boolean canCombine(Item input1, Item input2) {
         if (input1.count() != 1 || !isDamageableItem(input1)) return false;
         if (input2.count() != 1 || !isDamageableItem(input2)) return false;
         if (!input1.id().equals(input2.id())) return false;
-        Optional<CustomItem<ItemStack>> customItem = input1.getCustomItem();
+        Optional<ItemDefinition> customItem = input1.getDefinition();
         return customItem.isEmpty() || customItem.get().settings().repairable().craftingTable() != Tristate.FALSE;
     }
 
-    private static boolean isDamageableItem(Item<ItemStack> item) {
+    private static boolean isDamageableItem(Item item) {
         if (VersionHelper.isOrAbove1_20_5()) {
             return item.hasComponent(DataComponentTypes.MAX_DAMAGE) && item.hasComponent(DataComponentTypes.DAMAGE);
         } else {
-            return ItemProxy.INSTANCE.canBeDepleted(ItemStackProxy.INSTANCE.getItem(item.getLiteralObject()));
+            return ItemProxy.INSTANCE.canBeDepleted(ItemStackProxy.INSTANCE.getItem(item.minecraftItem()));
         }
     }
 
@@ -269,27 +289,26 @@ public final class RecipeInjector {
         public static final DyeMatchesInterceptor INSTANCE = new DyeMatchesInterceptor();
 
         @RuntimeType
-        public Object intercept(@AllArguments Object[] args) {
-            Object input = args[0];
+        public Object intercept(@Argument(value = 0) Object input) {
             if (DYE_INGREDIENT_COUNT_CHECKER.apply(input)) {
                 return false;
             }
             int size = INGREDIENT_SIZE_GETTER.apply(input);
-            Item<ItemStack> itemToDye = null;
+            Item itemToDye = null;
             boolean hasDye = false;
             for (int i = 0; i < size; i++) {
                 Object itemStack = INGREDIENT_GETTER.apply(input, i);
                 if (ItemStackProxy.INSTANCE.isEmpty(itemStack)) {
                     continue;
                 }
-                Item<ItemStack> wrapped = BukkitItemManager.instance().wrap(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack));
+                Item wrapped = BukkitItemManager.instance().wrap(itemStack);
                 if (isDyeable(wrapped)) {
                     if (itemToDye != null) {
                         return false;
                     }
                     itemToDye = wrapped;
                 } else {
-                    if (!isArmorDye(wrapped)) {
+                    if (!isDye(wrapped)) {
                         return false;
                     }
                     hasDye = true;
@@ -303,17 +322,16 @@ public final class RecipeInjector {
         public static final DyeAssembleInterceptor INSTANCE = new DyeAssembleInterceptor();
 
         @RuntimeType
-        public Object intercept(@AllArguments Object[] args) {
+        public Object intercept(@Argument(value = 0) Object input) {
             List<Color> colors = new ArrayList<>();
-            Item<ItemStack> itemToDye = null;
-            Object input = args[0];
+            Item itemToDye = null;
             int size = INGREDIENT_SIZE_GETTER.apply(input);
             for (int i = 0; i < size; i++) {
                 Object itemStack = INGREDIENT_GETTER.apply(input, i);
                 if (ItemStackProxy.INSTANCE.isEmpty(itemStack)) {
                     continue;
                 }
-                Item<ItemStack> wrapped = BukkitItemManager.instance().wrap(CraftItemStackProxy.INSTANCE.asCraftMirror(itemStack));
+                Item wrapped = BukkitItemManager.instance().wrap(itemStack);
                 if (isDyeable(wrapped)) {
                     itemToDye = wrapped.copyWithCount(1);
                 } else {
@@ -328,46 +346,46 @@ public final class RecipeInjector {
             if (itemToDye == null || itemToDye.isEmpty() || colors.isEmpty()) {
                 return ItemStackProxy.EMPTY;
             }
-            return itemToDye.applyDyedColors(colors).getLiteralObject();
+            return itemToDye.applyDyedColors(colors).minecraftItem();
         }
     }
 
     @Nullable
-    private static Color getDyeColor(final Item<ItemStack> dyeItem) {
-        Optional<CustomItem<ItemStack>> optionalCustomItem = dyeItem.getCustomItem();
+    private static Color getDyeColor(final Item dyeItem) {
+        Optional<ItemDefinition> optionalCustomItem = dyeItem.getDefinition();
         if (optionalCustomItem.isPresent()) {
-            CustomItem<ItemStack> customItem = optionalCustomItem.get();
-            return Optional.ofNullable(customItem.settings().dyeColor()).orElseGet(() -> getVanillaDyeColor(dyeItem));
+            ItemDefinition itemDefinition = optionalCustomItem.get();
+            return Optional.ofNullable(itemDefinition.settings().dyeColor()).orElseGet(() -> getVanillaDyeColor(dyeItem));
         }
         return getVanillaDyeColor(dyeItem);
     }
 
     @Nullable
-    private static Color getFireworkColor(final Item<ItemStack> dyeItem) {
-        Optional<CustomItem<ItemStack>> optionalCustomItem = dyeItem.getCustomItem();
+    private static Color getFireworkColor(final Item dyeItem) {
+        Optional<ItemDefinition> optionalCustomItem = dyeItem.getDefinition();
         if (optionalCustomItem.isPresent()) {
-            CustomItem<ItemStack> customItem = optionalCustomItem.get();
-            return Optional.ofNullable(customItem.settings().fireworkColor()).orElseGet(() -> getVanillaFireworkColor(dyeItem));
+            ItemDefinition itemDefinition = optionalCustomItem.get();
+            return Optional.ofNullable(itemDefinition.settings().fireworkColor()).orElseGet(() -> getVanillaFireworkColor(dyeItem));
         }
         return getVanillaFireworkColor(dyeItem);
     }
 
-    private static final Predicate<Item<ItemStack>> IS_DYEABLE =
+    private static final Predicate<Item> IS_DYEABLE =
             VersionHelper.isOrAbove1_20_5() ?
                     (item -> item.hasItemTag(ItemTags.DYEABLE)) :
                     (item -> {
-                       Object itemLike = ItemStackProxy.INSTANCE.getItem(item.getLiteralObject());
+                       Object itemLike = ItemStackProxy.INSTANCE.getItem(item.minecraftItem());
                        return DyeableLeatherItemProxy.CLASS.isInstance(itemLike);
                     });
 
-    private static boolean isDyeable(final Item<ItemStack> item) {
-        Optional<CustomItem<ItemStack>> optionalCustomItem = item.getCustomItem();
+    private static boolean isDyeable(final Item item) {
+        Optional<ItemDefinition> optionalCustomItem = item.getDefinition();
         if (optionalCustomItem.isPresent()) {
-            CustomItem<ItemStack> customItem = optionalCustomItem.get();
-            if (customItem.settings().dyeable() == Tristate.FALSE) {
+            ItemDefinition itemDefinition = optionalCustomItem.get();
+            if (itemDefinition.settings().dyeable() == Tristate.FALSE) {
                 return false;
             }
-            if (customItem.settings().dyeable() == Tristate.TRUE) {
+            if (itemDefinition.settings().dyeable() == Tristate.TRUE) {
                 return true;
             }
         }
@@ -376,8 +394,8 @@ public final class RecipeInjector {
 
     @SuppressWarnings("PointlessBitwiseExpression")
     @Nullable
-    private static Color getVanillaDyeColor(final Item<ItemStack> item) {
-        Object itemStack = item.getLiteralObject();
+    private static Color getVanillaDyeColor(final Item item) {
+        Object itemStack = item.minecraftItem();
         Object dyeItem = ItemStackProxy.INSTANCE.getItem(itemStack);
         if (!DyeItemProxy.CLASS.isInstance(dyeItem)) return null;
         Object dyeColor = DyeItemProxy.INSTANCE.getDyeColor(dyeItem);
@@ -395,32 +413,40 @@ public final class RecipeInjector {
     }
 
     @Nullable
-    private static Color getVanillaFireworkColor(final Item<ItemStack> item) {
-        Object itemStack = item.getLiteralObject();
-        Object dyeItem = ItemStackProxy.INSTANCE.getItem(itemStack);
-        if (!DyeItemProxy.CLASS.isInstance(dyeItem)) return null;
-        return Color.fromDecimal(DyeColorProxy.INSTANCE.getFireworkColor(DyeItemProxy.INSTANCE.getDyeColor(dyeItem)));
+    private static Color getVanillaFireworkColor(final Item item) {
+        if (VersionHelper.isOrAbove26_1()) {
+            String colorType = (String) item.getComponentAsJava(DataComponentKeys.DYE);
+            if (colorType == null) {
+                return null;
+            }
+            return new Color(DyeColor.valueOf(colorType.toUpperCase(Locale.ROOT)).fireworkColor());
+        } else {
+            Object itemStack = item.minecraftItem();
+            Object dyeItem = ItemStackProxy.INSTANCE.getItem(itemStack);
+            if (!DyeItemProxy.CLASS.isInstance(dyeItem)) return null;
+            return Color.fromDecimal(DyeColorProxy.INSTANCE.getFireworkColor(DyeItemProxy.INSTANCE.getDyeColor(dyeItem)));
+        }
     }
 
-    private static boolean isArmorDye(Item<ItemStack> dyeItem) {
-        Optional<CustomItem<ItemStack>> optionalCustomItem = dyeItem.getCustomItem();
+    private static boolean isDye(Item dyeItem) {
+        Optional<ItemDefinition> optionalCustomItem = dyeItem.getDefinition();
         if (optionalCustomItem.isPresent()) {
-            CustomItem<ItemStack> customItem = optionalCustomItem.get();
-            return customItem.settings().dyeColor() != null || isVanillaDyeItem(dyeItem);
+            ItemDefinition itemDefinition = optionalCustomItem.get();
+            return itemDefinition.settings().dyeColor() != null || isVanillaDyeItem(dyeItem);
         }
         return isVanillaDyeItem(dyeItem);
     }
 
-    private static boolean isFireworkDye(Item<ItemStack> dyeItem) {
-        Optional<CustomItem<ItemStack>> optionalCustomItem = dyeItem.getCustomItem();
+    private static boolean isFireworkDye(Item dyeItem) {
+        Optional<ItemDefinition> optionalCustomItem = dyeItem.getDefinition();
         if (optionalCustomItem.isPresent()) {
-            CustomItem<ItemStack> customItem = optionalCustomItem.get();
-            return customItem.settings().fireworkColor() != null || isVanillaDyeItem(dyeItem);
+            ItemDefinition itemDefinition = optionalCustomItem.get();
+            return itemDefinition.settings().fireworkColor() != null || isVanillaDyeItem(dyeItem);
         }
         return isVanillaDyeItem(dyeItem);
     }
 
-    private static boolean isVanillaDyeItem(Item<ItemStack> item) {
-        return DyeItemProxy.CLASS.isInstance(ItemStackProxy.INSTANCE.getItem(item.getLiteralObject()));
+    private static boolean isVanillaDyeItem(Item item) {
+        return DyeItemProxy.CLASS.isInstance(ItemStackProxy.INSTANCE.getItem(item.minecraftItem()));
     }
 }

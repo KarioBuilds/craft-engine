@@ -16,11 +16,12 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.patter
 import net.momirealms.sparrow.reflection.clazz.SparrowClass;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.*;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.function.Consumer;
 
 @ReflectionProxy(name = "net.minecraft.world.item.ItemStack")
-public interface ItemStackProxy extends DataComponentHolderProxy {
+public interface ItemStackProxy extends DataComponentHolderProxy, ItemInstanceProxy {
     ItemStackProxy INSTANCE = ASMProxyFactory.create(ItemStackProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.item.ItemStack");
     Object EMPTY = INSTANCE.getEmpty();
@@ -46,8 +47,29 @@ public interface ItemStackProxy extends DataComponentHolderProxy {
     @MethodInvoker(name = "of", isStatic = true, activeIf = "max_version=1.20.4")
     Object of(@Type(clazz = CompoundTagProxy.class) Object nbt);
 
-    @MethodInvoker(name = "is")
-    boolean is(Object target, @Type(clazz = TagKeyProxy.class) Object tag);
+    @MethodInvoker(name = "getCount")
+    int getCount(Object target);
+
+    @MethodInvoker(name = "setCount")
+    void setCount(Object target, int count);
+
+    @MethodInvoker(name = "getBukkitStack")
+    ItemStack getBukkitStack(Object target);
+
+    @MethodInvoker(name = "copyWithCount")
+    Object copyWithCount(Object target, int count);
+
+    @MethodInvoker(name = "copy")
+    Object copy(Object target);
+
+    @MethodInvoker(name = "grow")
+    void grow(Object target, int count);
+
+    @MethodInvoker(name = "shrink")
+    void shrink(Object target, int count);
+
+    @MethodInvoker(name = "is", activeIf = "max_version=1.21.11")
+    boolean is$0(Object target, @Type(clazz = TagKeyProxy.class) Object tag);
 
     @MethodInvoker(name = "getTag", activeIf = "max_version=1.20.4")
     Object getTag(Object target);
@@ -102,4 +124,10 @@ public interface ItemStackProxy extends DataComponentHolderProxy {
 
     @MethodInvoker(name = "validatedStreamCodec", isStatic = true, activeIf = "min_version=1.20.5")
     Object validatedStreamCodec(@Type(clazz = StreamCodecProxy.class) Object basePacketCodec);
+
+    @MethodInvoker(name = "isSameItemSameTags", isStatic = true, activeIf = "max_version=1.20.4")
+    boolean isSameItemSameTags(@Type(clazz = ItemStackProxy.class) Object stack, @Type(clazz = ItemStackProxy.class) Object otherStack);
+
+    @MethodInvoker(name = "isSameItemSameComponents", isStatic = true, activeIf = "min_version=1.20.5")
+    boolean isSameItemSameComponents(@Type(clazz = ItemStackProxy.class) Object stack, @Type(clazz = ItemStackProxy.class) Object otherStack);
 }

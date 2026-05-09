@@ -1,14 +1,14 @@
 package net.momirealms.craftengine.bukkit.plugin.command.feature;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
 import net.momirealms.craftengine.bukkit.plugin.command.BukkitCommandFeature;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.bukkit.util.PlayerUtils;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.item.ItemDefinition;
 import net.momirealms.craftengine.core.item.ItemKeys;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.command.CraftEngineCommandManager;
@@ -24,7 +24,6 @@ import net.momirealms.craftengine.proxy.minecraft.sounds.SoundSourceProxy;
 import org.bukkit.NamespacedKey;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.incendo.cloud.Command;
 import org.incendo.cloud.CommandManager;
@@ -43,7 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-public class TotemAnimationCommand extends BukkitCommandFeature<CommandSender> {
+public final class TotemAnimationCommand extends BukkitCommandFeature<CommandSender> {
     public static final Object FIX_TOTEM_SOUND_PACKET = ClientboundSoundPacketProxy.INSTANCE.newInstance(HolderProxy.INSTANCE.direct(SoundEventsProxy.TOTEM_USE), SoundSourceProxy.MUSIC, 0, Integer.MIN_VALUE, 0, 0, 0, 0);
 
     public TotemAnimationCommand(CraftEngineCommandManager<CommandSender> commandManager, CraftEngine plugin) {
@@ -55,7 +54,7 @@ public class TotemAnimationCommand extends BukkitCommandFeature<CommandSender> {
         return builder
                 .flag(FlagKeys.SILENT_FLAG)
                 .flag(CommandFlag.builder("no-sound"))
-                .required("players", MultiplePlayerSelectorParser.multiplePlayerSelectorParser())
+                .required("players", MultiplePlayerSelectorParser.multiplePlayerSelectorParser(false))
                 .required("id", NamespacedKeyParser.namespacedKeyComponent().suggestionProvider(new SuggestionProvider<>() {
                     @Override
                     public @NonNull CompletableFuture<? extends @NonNull Iterable<? extends @NonNull Suggestion>> suggestionsFuture(@NonNull CommandContext<Object> context, @NonNull CommandInput input) {
@@ -73,10 +72,12 @@ public class TotemAnimationCommand extends BukkitCommandFeature<CommandSender> {
                 .optional("min-volume", FloatParser.floatParser(0f))
                 .optional("min-pitch", FloatParser.floatParser(0f, 2f))
                 .handler(context -> {
+                    MultiplePlayerSelector selector = context.get("players");
+                    Collection<Player> players = selector.values();
                     NamespacedKey namespacedKey = context.get("id");
                     Key key = Key.of(namespacedKey.namespace(), namespacedKey.value());
-                    CustomItem<ItemStack> customItem = plugin().itemManager().getCustomItem(key).orElse(null);
-                    if (customItem == null || (!VersionHelper.isOrAbove1_21_2() && customItem.material().equals(ItemKeys.TOTEM_OF_UNDYING))) {
+                    ItemDefinition itemDefinition = plugin().itemManager().getItemDefinition(key).orElse(null);
+                    if (itemDefinition == null || (!VersionHelper.isOrAbove1_21_2() && itemDefinition.material().equals(ItemKeys.TOTEM_OF_UNDYING))) {
                         handleFeedback(context, MessageConstants.COMMAND_TOTEM_NOT_TOTEM, Component.text(key.toString()));
                         return;
                     }
@@ -90,12 +91,10 @@ public class TotemAnimationCommand extends BukkitCommandFeature<CommandSender> {
                         soundData = SoundData.of(KeyUtils.namespacedKeyToKey(soundKey.get()), SoundData.SoundValue.ranged(minVolume, volume), SoundData.SoundValue.ranged(minPitch, pitch));
                     }
                     boolean removeSound = context.flags().hasFlag("no-sound");
-                    MultiplePlayerSelector selector = context.get("players");
-                    Collection<Player> players = selector.values();
                     for (Player player : players) {
-                        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
+                        BukkitServerPlayer serverPlayer = BukkitAdaptor.adapt(player);
                         if (serverPlayer == null) continue;
-                        Item<ItemStack> item = customItem.buildItem(serverPlayer);
+                        Item item = itemDefinition.buildItem(serverPlayer);
                         if (VersionHelper.isOrAbove1_21_2()) {
                             item.setJavaComponent(DataComponentTypes.DEATH_PROTECTION, Map.of());
                         }

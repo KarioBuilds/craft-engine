@@ -47,7 +47,7 @@ public final class CustomFurnitureHitbox extends AbstractFurnitureHitBox {
         if (VersionHelper.isOrAbove1_20_5()) {
             Object attributeIns = AttributeInstanceProxy.INSTANCE.newInstance$0(AttributesProxy.SCALE, $ -> {});
             AttributeInstanceProxy.INSTANCE.setBaseValue(attributeIns, config.scale());
-            packets.add(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance(entityId, Collections.singletonList(attributeIns)));
+            packets.add(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(entityId, Collections.singletonList(attributeIns)));
         }
         this.spawnPacket = ClientboundBundlePacketProxy.INSTANCE.newInstance(packets);
         this.part = new FurnitureHitboxPart(entityId, aabb, pos, false);
@@ -76,7 +76,7 @@ public final class CustomFurnitureHitbox extends AbstractFurnitureHitBox {
     }
 
     @Override
-    public void collectVirtualEntityId(Consumer<Integer> collector) {
+    public void collectInteractableEntityId(Consumer<Integer> collector) {
         collector.accept(this.entityId);
     }
 

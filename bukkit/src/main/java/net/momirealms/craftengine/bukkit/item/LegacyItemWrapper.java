@@ -1,62 +1,37 @@
 package net.momirealms.craftengine.bukkit.item;
 
+import com.google.gson.JsonElement;
 import net.momirealms.craftengine.bukkit.util.RegistryOps;
-import net.momirealms.craftengine.bukkit.util.EquipmentSlotUtils;
-import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
-import net.momirealms.craftengine.core.entity.EquipmentSlot;
-import net.momirealms.craftengine.core.entity.player.Player;
-import net.momirealms.craftengine.core.item.ItemType;
 import net.momirealms.craftengine.core.item.ItemWrapper;
-import net.momirealms.craftengine.core.util.random.RandomUtils;
-import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.craftengine.proxy.minecraft.nbt.TagProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.nbt.Tag;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
-import org.jetbrains.annotations.Nullable;
 
-public class LegacyItemWrapper implements ItemWrapper<ItemStack> {
-    private final Object nmsStack;
-    private final ItemStack itemStack;
-    private ItemType itemType;
-
-    public LegacyItemWrapper(ItemStack item) {
-        this.itemStack = ItemStackUtils.ensureCraftItemStack(item);
-        this.nmsStack = CraftItemStackProxy.INSTANCE.unwrap(this.itemStack);
+public final class LegacyItemWrapper extends BukkitItemWrapper {
+    public LegacyItemWrapper(Object itemStack) {
+        super(itemStack);
     }
 
-    public ItemType itemType() {
-        if (this.itemType == null) {
-            this.itemType = new ComponentItemType(ItemStackProxy.INSTANCE.getItem(this.getLiteralObject()));
-        }
-        return this.itemType;
+    public LegacyItemWrapper(ItemStack itemStack) {
+        super(itemStack);
     }
 
-    public boolean setTag(Object value, Object... path) {
-        Object finalNMSTag;
-        if (value instanceof Tag tag) {
-            finalNMSTag = RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, tag);
-        } else if (TagProxy.CLASS.isInstance(value)) {
-            finalNMSTag = value;
-        } else {
-            finalNMSTag = RegistryOps.JAVA.convertTo(RegistryOps.NBT, value);
-        }
-
+    public void setMinecraftTag(Object value, Object... path) {
         if (path == null || path.length == 0) {
-            if (CompoundTagProxy.CLASS.isInstance(finalNMSTag)) {
-                ItemStackProxy.INSTANCE.setTag(this.nmsStack, finalNMSTag);
-                return true;
+            if (CompoundTagProxy.CLASS.isInstance(value)) {
+                ItemStackProxy.INSTANCE.setTag(this.itemStack, value);
+                return;
             }
-            return false;
+            throw new IllegalArgumentException("Root tag is not a compound tag");
         }
 
-        Object currentTag = ItemStackProxy.INSTANCE.getOrCreateTag(this.nmsStack);
+        Object currentTag = ItemStackProxy.INSTANCE.getOrCreateTag(this.itemStack);
 
         for (int i = 0; i < path.length - 1; i++) {
             Object pathSegment = path[i];
-            if (pathSegment == null) return false;
+            if (pathSegment == null) return;
             Object childTag = CompoundTagProxy.INSTANCE.get(currentTag, pathSegment.toString());
             if (!CompoundTagProxy.CLASS.isInstance(childTag)) {
                 childTag = CompoundTagProxy.INSTANCE.newInstance();
@@ -66,35 +41,57 @@ public class LegacyItemWrapper implements ItemWrapper<ItemStack> {
         }
 
         String finalKey = path[path.length - 1].toString();
-        CompoundTagProxy.INSTANCE.put(currentTag, finalKey, finalNMSTag);
-        return true;
+        CompoundTagProxy.INSTANCE.put(currentTag, finalKey, value);
+    }
+
+    public void setSparrowTag(Tag value, Object... path) {
+        setMinecraftTag(RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, value), path);
+    }
+
+    public void setJavaTag(Object value, Object... path) {
+        setMinecraftTag(RegistryOps.JAVA.convertTo(RegistryOps.NBT, value), path);
+    }
+
+    public void setJsonTag(JsonElement value, Object... path) {
+        setMinecraftTag(RegistryOps.JSON.convertTo(RegistryOps.NBT, value), path);
+    }
+
+    public void setTag(Object value, Object... path) {
+        Object valueTag;
+        if (value instanceof Tag tag) {
+            valueTag = RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, tag);
+        } else if (TagProxy.CLASS.isInstance(value)) {
+            valueTag = value;
+        } else if (value instanceof JsonElement je) {
+            valueTag = RegistryOps.JSON.convertTo(RegistryOps.NBT, je);
+        } else {
+            valueTag = RegistryOps.JAVA.convertTo(RegistryOps.NBT, value);
+        }
+        setMinecraftTag(valueTag, path);
     }
 
     @SuppressWarnings("unchecked")
-    public <V> V getJavaTag(Object... path) {
-        Object tag = getExactTag(path);
+    public <V> V getTagAsJava(Object... path) {
+        Object tag = getMinecraftTag(path);
         if (tag == null) return null;
         return (V) RegistryOps.NBT.convertTo(RegistryOps.JAVA, tag);
     }
 
-    public Tag getNBTTag(Object... path) {
-        Object tag = getExactTag(path);
+    public Tag getSparrowTag(Object... path) {
+        Object tag = getMinecraftTag(path);
         if (tag == null) return null;
         return RegistryOps.NBT.convertTo(RegistryOps.SPARROW_NBT, tag);
     }
 
-    public int count() {
-        return getItem().getAmount();
-    }
-
-    public void count(int amount) {
-        if (amount < 0) amount = 0;
-        getItem().setAmount(amount);
+    public JsonElement getTagAsJson(Object... path) {
+        Object tag = getMinecraftTag(path);
+        if (tag == null) return null;
+        return RegistryOps.NBT.convertTo(RegistryOps.JSON, tag);
     }
 
     @SuppressWarnings("DuplicatedCode")
-    public Object getExactTag(Object... path) {
-        Object compoundTag = ItemStackProxy.INSTANCE.getTag(this.nmsStack);
+    public Object getMinecraftTag(Object... path) {
+        Object compoundTag = ItemStackProxy.INSTANCE.getTag(this.itemStack);
         if (compoundTag == null) return null;
         Object currentTag = compoundTag;
         if (path == null || path.length == 0) {
@@ -116,7 +113,7 @@ public class LegacyItemWrapper implements ItemWrapper<ItemStack> {
     }
 
     public boolean remove(Object... path) {
-        Object compoundTag = ItemStackProxy.INSTANCE.getTag(this.nmsStack);
+        Object compoundTag = ItemStackProxy.INSTANCE.getTag(this.itemStack);
         if (compoundTag == null || path == null || path.length == 0) return false;
 
         if (path.length == 1) {
@@ -146,67 +143,16 @@ public class LegacyItemWrapper implements ItemWrapper<ItemStack> {
     }
 
     public boolean hasTag(Object... path) {
-        return getExactTag(path) != null;
+        return getMinecraftTag(path) != null;
     }
 
     @Override
-    public ItemStack getItem() {
-        return this.itemStack;
+    public ItemWrapper copy() {
+        return new LegacyItemWrapper(ItemStackProxy.INSTANCE.copy(this.itemStack));
     }
 
     @Override
-    public Object getLiteralObject() {
-        return this.nmsStack;
-    }
-
-    @Override
-    public ItemWrapper<ItemStack> copyWithCount(int count) {
-        ItemStack copied = this.itemStack.clone();
-        copied.setAmount(count);
-        return new LegacyItemWrapper(copied);
-    }
-
-    @Override
-    public void shrink(int amount) {
-        this.count(count() - amount);
-    }
-
-    @Override
-    public void grow(int amount) {
-        this.count(count() + amount);
-    }
-
-    @Override
-    public void hurtAndBreak(int amount, @Nullable Player player, @Nullable EquipmentSlot slot) {
-        if (player == null) {
-            if (this.hurt(amount)) {
-                this.shrink(1);
-                this.setTag(0, "Damage");
-            }
-            return;
-        }
-        ItemStackUtils.hurtAndBreak(
-                this.nmsStack,
-                amount,
-                player.serverPlayer(),
-                slot != null ? EquipmentSlotUtils.toNMSEquipmentSlot(slot) : null
-        );
-    }
-
-    private boolean hurt(int amount) {
-        if (ItemStackUtils.isEmpty(itemStack) || itemStack.getType().getMaxDurability() <= 0 || !hasTag("Unbreakable") || (boolean) getJavaTag("Unbreakable")) return false;
-        if (amount > 0) {
-            int level = this.itemStack.getEnchantmentLevel(Enchantment.UNBREAKING);
-            int ignoredDamage = 0;
-            for (int i = 0; level > 0 && i < amount; ++i) {
-                if (RandomUtils.generateRandomInt(0, level + 1) > 0) ++ignoredDamage;
-            }
-            amount -= ignoredDamage;
-            if (amount <= 0) return false;
-        }
-        int damage = this.hasTag("Damage") ? this.getJavaTag("Damage") : 0;
-        damage += amount;
-        this.setTag(damage, "Damage");
-        return damage >= this.itemStack.getType().getMaxDurability();
+    public ItemWrapper copyWithCount(int count) {
+        return new LegacyItemWrapper(ItemStackProxy.INSTANCE.copyWithCount(this.itemStack, count));
     }
 }

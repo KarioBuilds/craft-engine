@@ -1,18 +1,16 @@
 package net.momirealms.craftengine.bukkit.item.factory;
 
 import com.google.gson.JsonElement;
+import net.momirealms.craftengine.bukkit.item.BukkitItemWrapper;
 import net.momirealms.craftengine.bukkit.util.ItemTags;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
+import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.ItemFactory;
 import net.momirealms.craftengine.core.item.ItemKeys;
-import net.momirealms.craftengine.core.item.ItemWrapper;
-import net.momirealms.craftengine.core.item.data.JukeboxPlayable;
-import net.momirealms.craftengine.core.item.setting.EquipmentData;
+import net.momirealms.craftengine.core.item.component.value.JukeboxPlayable;
+import net.momirealms.craftengine.core.item.setting.value.EquipmentData;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
-import net.momirealms.craftengine.core.plugin.compatibility.ItemSource;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.core.util.StringUtils;
-import net.momirealms.craftengine.core.util.UniqueKey;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
@@ -20,20 +18,17 @@ import net.momirealms.craftengine.proxy.minecraft.world.item.BlockItemProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.nbt.Tag;
 import org.bukkit.Bukkit;
-import org.bukkit.inventory.ItemStack;
 
 import java.util.Objects;
 import java.util.Optional;
 
-public abstract class BukkitItemFactory<W extends ItemWrapper<ItemStack>> extends ItemFactory<W, ItemStack> {
-    private boolean hasExternalRecipeSource = false;
-    private ItemSource<ItemStack>[] recipeIngredientSources = null;
+public abstract class BukkitItemFactory<W extends BukkitItemWrapper> extends ItemFactory<W> {
 
     protected BukkitItemFactory(CraftEngine plugin) {
         super(plugin);
     }
 
-    public static BukkitItemFactory<? extends ItemWrapper<ItemStack>> create(CraftEngine plugin) {
+    public static BukkitItemFactory<? extends BukkitItemWrapper> create(CraftEngine plugin) {
         Objects.requireNonNull(plugin, "plugin");
         if (VersionHelper.isOrAbove1_21_5()) {
             return new ComponentItemFactory1_21_5(plugin);
@@ -51,73 +46,42 @@ public abstract class BukkitItemFactory<W extends ItemWrapper<ItemStack>> extend
         throw new IllegalStateException("Unsupported server version: " + VersionHelper.MINECRAFT_VERSION.version());
     }
 
-    public void resetRecipeIngredientSources(ItemSource<ItemStack>[] recipeIngredientSources) {
-        if (recipeIngredientSources == null || recipeIngredientSources.length == 0) {
-            this.recipeIngredientSources = null;
-            this.hasExternalRecipeSource = false;
-        } else {
-            this.recipeIngredientSources = recipeIngredientSources;
-            this.hasExternalRecipeSource = true;
-        }
-    }
-
     @Override
     protected boolean isEmpty(W item) {
-        return ItemStackProxy.INSTANCE.isEmpty(item.getLiteralObject());
+        return ItemStackProxy.INSTANCE.isEmpty(item.minecraftItem());
     }
 
     @SuppressWarnings("deprecation")
     @Override
     protected byte[] toByteArray(W item) {
-        return Bukkit.getUnsafe().serializeItem(item.getItem());
+        return Bukkit.getUnsafe().serializeItem(ItemStackProxy.INSTANCE.getBukkitStack(item.minecraftItem()));
     }
 
     @Override
     protected boolean isBlockItem(W item) {
-        return BlockItemProxy.CLASS.isInstance(ItemStackProxy.INSTANCE.getItem(item.getLiteralObject()));
+        return BlockItemProxy.CLASS.isInstance(ItemStackProxy.INSTANCE.getItem(item.minecraftItem()));
     }
 
     @Override
     protected Key vanillaId(W item) {
-        Object i = ItemStackProxy.INSTANCE.getItem(item.getLiteralObject());
+        Object i = ItemStackProxy.INSTANCE.getItem(item.minecraftItem());
         if (i == null) return ItemKeys.AIR;
         return KeyUtils.identifierToKey(RegistryProxy.INSTANCE.getKey(BuiltInRegistriesProxy.ITEM, i));
     }
 
     @Override
     protected Key id(W item) {
-        if (ItemStackProxy.INSTANCE.isEmpty(item.getLiteralObject())) {
+        if (ItemStackProxy.INSTANCE.isEmpty(item.minecraftItem())) {
             return ItemKeys.AIR;
         }
         return customId(item).orElse(vanillaId(item));
     }
 
     @Override
-    protected ItemStack getItem(W item) {
-        return item.getItem();
-    }
-
-    @Override
-    protected UniqueKey recipeIngredientID(W item) {
-        if (ItemStackProxy.INSTANCE.isEmpty(item.getLiteralObject())) {
-            return null;
-        }
-        if (this.hasExternalRecipeSource) {
-           for (ItemSource<ItemStack> source : this.recipeIngredientSources) {
-               String id = source.id(item.getItem());
-               if (id != null) {
-                   return UniqueKey.create(Key.of(source.plugin(), StringUtils.normalizeString(id)));
-               }
-           }
-        }
-        return UniqueKey.create(id(item));
-    }
-
-    @Override
     protected boolean hasItemTag(W item, Key itemTag) {
-        Object literalObject = item.getLiteralObject();
+        Object minecraftItem = item.minecraftItem();
         Object tag = ItemTags.getOrCreate(itemTag);
-        return ItemStackProxy.INSTANCE.is(literalObject, tag);
+        return ItemStackProxy.INSTANCE.is$0(minecraftItem, tag);
     }
 
     @Override
@@ -131,27 +95,32 @@ public abstract class BukkitItemFactory<W extends ItemWrapper<ItemStack>> extend
     }
 
     @Override
-    protected void setNBTComponent(W item, Object type, Tag value) {
+    protected void setSparrowTagComponent(W item, Object type, Tag value) {
         throw new UnsupportedOperationException("This feature is only available on 1.20.5+");
     }
 
     @Override
-    protected Object getJavaComponent(W item, Object type) {
+    protected void setMinecraftTagComponent(W item, Object type, Object value) {
         throw new UnsupportedOperationException("This feature is only available on 1.20.5+");
     }
 
     @Override
-    protected JsonElement getJsonComponent(W item, Object type) {
+    protected Object getComponentAsJava(W item, Object type) {
         throw new UnsupportedOperationException("This feature is only available on 1.20.5+");
     }
 
     @Override
-    public Object getNBTComponent(W item, Object type) {
+    protected JsonElement getComponentAsJson(W item, Object type) {
         throw new UnsupportedOperationException("This feature is only available on 1.20.5+");
     }
 
     @Override
-    protected Tag getSparrowNBTComponent(W item, Object type) {
+    public Object getComponentAsMinecraftTag(W item, Object type) {
+        throw new UnsupportedOperationException("This feature is only available on 1.20.5+");
+    }
+
+    @Override
+    protected Tag getComponentAsSparrowTag(W item, Object type) {
         throw new UnsupportedOperationException("This feature is only available on 1.20.5+");
     }
 
@@ -227,6 +196,16 @@ public abstract class BukkitItemFactory<W extends ItemWrapper<ItemStack>> extend
 
     @Override
     protected void itemModel(W item, String data) {
+        throw new UnsupportedOperationException("This feature is only available on 1.21.2+");
+    }
+
+    @Override
+    protected Optional<W> useRemainder(W item) {
+        throw new UnsupportedOperationException("This feature is only available on 1.21.2+");
+    }
+
+    @Override
+    protected void useRemainder(W item, Item data, int count) {
         throw new UnsupportedOperationException("This feature is only available on 1.21.2+");
     }
 

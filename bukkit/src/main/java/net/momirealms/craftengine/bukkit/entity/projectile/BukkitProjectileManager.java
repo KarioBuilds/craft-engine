@@ -37,7 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class BukkitProjectileManager implements Listener, ProjectileManager {
+public final class BukkitProjectileManager implements Listener, ProjectileManager {
     private static BukkitProjectileManager instance;
     private final BukkitCraftEngine plugin;
     // 会被netty线程访问
@@ -122,9 +122,9 @@ public class BukkitProjectileManager implements Listener, ProjectileManager {
         } else {
             return;
         }
-        Item<ItemStack> wrapped = this.plugin.itemManager().wrap(projectileItem);
+        Item wrapped = this.plugin.itemManager().wrap(projectileItem);
         if (ItemUtils.isEmpty(wrapped)) return;
-        wrapped.getCustomItem().ifPresent(it -> {
+        wrapped.getDefinition().ifPresent(it -> {
             ProjectileMeta meta = it.settings().projectileMeta();
             if (meta != null) {
                 BukkitCustomProjectile customProjectile = new BukkitCustomProjectile(meta, projectile, wrapped);

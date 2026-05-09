@@ -1,11 +1,10 @@
 package net.momirealms.craftengine.bukkit.api;
 
 import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.item.Item;
@@ -35,7 +34,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 
 public final class CraftEngineBlocks {
-
     private CraftEngineBlocks() {}
 
     /**
@@ -50,7 +48,7 @@ public final class CraftEngineBlocks {
      * @return a non-null map containing all loaded custom blocks
      */
     @NotNull
-    public static Map<Key, CustomBlock> loadedBlocks() {
+    public static Map<Key, BlockDefinition> loadedBlocks() {
         return BukkitBlockManager.instance().loadedBlocks();
     }
 
@@ -61,7 +59,7 @@ public final class CraftEngineBlocks {
      * @return the custom block
      */
     @Nullable
-    public static CustomBlock byId(@NotNull Key id) {
+    public static BlockDefinition byId(@NotNull Key id) {
         return BukkitBlockManager.instance().blockById(id).orElse(null);
     }
 
@@ -90,7 +88,7 @@ public final class CraftEngineBlocks {
     public static boolean place(@NotNull Location location,
                                 @NotNull Key blockId,
                                 boolean playSound) {
-        CustomBlock block = byId(blockId);
+        BlockDefinition block = byId(blockId);
         if (block == null) return false;
         return place(location, block.defaultState(), UpdateFlags.UPDATE_ALL, playSound);
     }
@@ -108,7 +106,7 @@ public final class CraftEngineBlocks {
                                 @NotNull Key blockId,
                                 @NotNull CompoundTag properties,
                                 boolean playSound) {
-        CustomBlock block = byId(blockId);
+        BlockDefinition block = byId(blockId);
         if (block == null) return false;
         return place(location, block.getBlockState(properties), UpdateFlags.UPDATE_ALL, playSound);
     }
@@ -128,7 +126,7 @@ public final class CraftEngineBlocks {
                                 @NotNull CompoundTag properties,
                                 int flags,
                                 boolean playSound) {
-        CustomBlock block = byId(blockId);
+        BlockDefinition block = byId(blockId);
         if (block == null) return false;
         return place(location, block.getBlockState(properties), flags, playSound);
     }
@@ -149,62 +147,9 @@ public final class CraftEngineBlocks {
         boolean success;
         Object worldServer = CraftWorldProxy.INSTANCE.getWorld(location.getWorld());
         Object blockPos = BlockPosProxy.INSTANCE.newInstance(location.getBlockX(), location.getBlockY(), location.getBlockZ());
-        Object blockState = block.customBlockState().literalObject();
+        Object blockState = block.customBlockState().minecraftState();
         Object oldBlockState = BlockGetterProxy.INSTANCE.getBlockState(worldServer, blockPos);
         success = LevelWriterProxy.INSTANCE.setBlock(worldServer, blockPos, blockState, flags);
-        if (success) {
-            BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.onPlace(blockState, worldServer, blockPos, oldBlockState, false);
-            if (playSound) {
-                SoundData data = block.settings().sounds().placeSound();
-                location.getWorld().playSound(location, data.id().toString(), SoundCategory.BLOCKS, data.volume().get(), data.pitch().get());
-            }
-        }
-        return success;
-    }
-
-    /**
-     * Place a custom block with given properties
-     *
-     * @param location location
-     * @param blockId block owner id
-     * @param properties properties
-     * @param option update options
-     * @param playSound whether to play place sounds
-     * @return success or not
-     */
-    @SuppressWarnings("removal")
-    @Deprecated(forRemoval = true)
-    public static boolean place(@NotNull Location location,
-                                @NotNull Key blockId,
-                                @NotNull CompoundTag properties,
-                                @NotNull net.momirealms.craftengine.core.block.UpdateOption option,
-                                boolean playSound) {
-        CustomBlock block = byId(blockId);
-        if (block == null) return false;
-        return place(location, block.getBlockState(properties), option, playSound);
-    }
-
-    /**
-     * Places a custom block state at a certain location
-     *
-     * @param location location
-     * @param block block state to place
-     * @param option update options
-     * @param playSound whether to play place sounds
-     * @return success or not
-     */
-    @SuppressWarnings("removal")
-    @Deprecated(forRemoval = true)
-    public static boolean place(@NotNull Location location,
-                                @NotNull ImmutableBlockState block,
-                                @NotNull net.momirealms.craftengine.core.block.UpdateOption option,
-                                boolean playSound) {
-        boolean success;
-        Object worldServer = CraftWorldProxy.INSTANCE.getWorld(location.getWorld());
-        Object blockPos = BlockPosProxy.INSTANCE.newInstance(location.getBlockX(), location.getBlockY(), location.getBlockZ());
-        Object blockState = block.customBlockState().literalObject();
-        Object oldBlockState = BlockGetterProxy.INSTANCE.getBlockState(worldServer, blockPos);
-        success = LevelWriterProxy.INSTANCE.setBlock(worldServer, blockPos, blockState, option.flags());
         if (success) {
             BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.onPlace(blockState, worldServer, blockPos, oldBlockState, false);
             if (playSound) {
@@ -256,7 +201,7 @@ public final class CraftEngineBlocks {
                                  boolean sendLevelEvent) {
         ImmutableBlockState state = getCustomBlockState(block);
         if (state == null || state.isEmpty()) return false;
-        World world = BukkitAdaptors.adapt(block.getWorld());
+        World world = BukkitAdaptor.adapt(block.getWorld());
         Location location = block.getLocation();
         WorldPosition position = new WorldPosition(world, location.getBlockX() + 0.5, location.getBlockY() + 0.5, location.getBlockZ() + 0.5);
         if (dropLoot) {
@@ -264,17 +209,17 @@ public final class CraftEngineBlocks {
                     .withParameter(DirectContextParameters.POSITION, position);
             BukkitServerPlayer serverPlayer = null;
             if (player != null) {
-                serverPlayer = BukkitCraftEngine.instance().adapt(player);
+                serverPlayer = BukkitAdaptor.adapt(player);
                 builder.withOptionalParameter(DirectContextParameters.PLAYER, serverPlayer);
             }
-            for (Item<?> item : state.getDrops(builder, world, serverPlayer)) {
+            for (Item item : state.getDrops(builder, world, serverPlayer)) {
                 world.dropItemNaturally(position, item);
             }
         }
         if (sendLevelEvent) {
-            LevelAccessorProxy.INSTANCE.levelEvent(world.serverWorld(), WorldEvents.BLOCK_BREAK_EFFECT, LocationUtils.toBlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ()), state.customBlockState().registryId());
+            LevelAccessorProxy.INSTANCE.levelEvent(world.minecraftWorld(), WorldEvents.BLOCK_BREAK_EFFECT, LocationUtils.toBlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ()), state.customBlockState().registryId());
         }
-        LevelProxy.INSTANCE.removeBlock(world.serverWorld(), LocationUtils.toBlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ()), movedByPiston);
+        LevelProxy.INSTANCE.removeBlock(world.minecraftWorld(), LocationUtils.toBlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ()), movedByPiston);
         return true;
     }
 
@@ -342,7 +287,7 @@ public final class CraftEngineBlocks {
      */
     @NotNull
     public static BlockData getBukkitBlockData(@NotNull ImmutableBlockState blockState) {
-        return BlockStateUtils.fromBlockData(blockState.customBlockState().literalObject());
+        return BlockStateUtils.fromBlockData(blockState.customBlockState().minecraftState());
     }
 
     /**

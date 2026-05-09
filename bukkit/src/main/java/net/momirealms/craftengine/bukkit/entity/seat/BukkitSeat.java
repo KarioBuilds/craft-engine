@@ -22,7 +22,7 @@ import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.Objects;
 
-public class BukkitSeat<O extends SeatOwner> implements Seat<O> {
+public final class BukkitSeat<O extends SeatOwner> implements Seat<O> {
     private final O owner;
     private final SeatConfig seatConfig;
     private WeakReference<Entity> entity;
@@ -100,7 +100,7 @@ public class BukkitSeat<O extends SeatOwner> implements Seat<O> {
         Location location = this.calculateSeatLocation(sourceLocation);
 
         CompoundTag extraData = new CompoundTag();
-        this.owner.saveEntityData(extraData);
+        this.owner.saveSeatEntityData(extraData);
         byte[] data;
         try {
             data = NBT.toBytes(extraData);

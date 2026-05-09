@@ -1,13 +1,14 @@
 package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.behavior.RandomTickBlock;
+import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.LazyReference;
-import net.momirealms.craftengine.core.util.ResourceConfigUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.util.random.RandomUtils;
 import net.momirealms.craftengine.proxy.minecraft.core.BlockPosProxy;
@@ -24,25 +25,28 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.lighting.LightEngi
 import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidStateProxy;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.Callable;
 
-public class SurfaceSpreadingBlockBehavior extends BukkitBlockBehavior {
+public final class SurfaceSpreadingBlockBehavior extends BukkitBlockBehavior implements RandomTickBlock {
     public static final BlockBehaviorFactory<SurfaceSpreadingBlockBehavior> FACTORY = new Factory();
-    private final int requiredLight;
-    private final LazyReference<Object> baseBlock;
-    private final Property<Boolean> snowyProperty;
+    public final int requiredLight;
+    public final LazyReference<Object> baseBlock;
+    public final Property<Boolean> snowyProperty;
 
-    public SurfaceSpreadingBlockBehavior(CustomBlock customBlock, int requiredLight, String baseBlock, @Nullable Property<Boolean> snowyProperty) {
-        super(customBlock);
+    private SurfaceSpreadingBlockBehavior(BlockDefinition blockDefinition, int requiredLight, String baseBlock, @Nullable Property<Boolean> snowyProperty) {
+        super(blockDefinition);
         this.requiredLight = requiredLight;
         this.snowyProperty = snowyProperty;
-        this.baseBlock = LazyReference.lazyReference(() -> Objects.requireNonNull(BukkitBlockManager.instance().createBlockState(baseBlock)).literalObject());
+        this.baseBlock = LazyReference.lazyReference(() -> Objects.requireNonNull(BukkitBlockManager.instance().createBlockState(baseBlock)).minecraftState());
     }
 
     @Override
-    public void randomTick(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public boolean canRandomlyTick(ImmutableBlockState state) {
+        return true;
+    }
+
+    @Override
+    public void randomTick(Object thisBlock, Object[] args) {
         Object state = args[0];
         Object level = args[1];
         Object pos = args[2];
@@ -75,7 +79,7 @@ public class SurfaceSpreadingBlockBehavior extends BukkitBlockBehavior {
                 );
                 newState = newState.with(this.snowyProperty, hasSnow);
             }
-            LevelWriterProxy.INSTANCE.setBlock(level, blockPos, newState.customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
+            LevelWriterProxy.INSTANCE.setBlock(level, blockPos, newState.customBlockState().minecraftState(), UpdateFlags.UPDATE_ALL);
         }
     }
 
@@ -90,7 +94,7 @@ public class SurfaceSpreadingBlockBehavior extends BukkitBlockBehavior {
             if (VersionHelper.isOrAbove1_21_2()) {
                 return LightEngineProxy.INSTANCE.getLightBlockInto(
                         state, blockState, DirectionProxy.UP,
-                        BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getLightBlock$1(blockState)
+                        BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getLightDampening$1(blockState)
                 ) < 15;
             } else {
                 return LightEngineProxy.INSTANCE.getLightBlockInto(
@@ -103,17 +107,21 @@ public class SurfaceSpreadingBlockBehavior extends BukkitBlockBehavior {
 
     private static boolean canPropagate(Object state, Object level, Object pos) {
         Object blockPos = BlockPosProxy.INSTANCE.relative(pos, DirectionProxy.UP);
-        return canBeGrass(state, level, pos) && !FluidStateProxy.INSTANCE.is(BlockGetterProxy.INSTANCE.getFluidState(level, blockPos), FluidTagsProxy.WATER);
+        return canBeGrass(state, level, pos) && !FluidStateProxy.INSTANCE.is$0(BlockGetterProxy.INSTANCE.getFluidState(level, blockPos), FluidTagsProxy.WATER);
     }
 
     private static class Factory implements BlockBehaviorFactory<SurfaceSpreadingBlockBehavior> {
+        private static final String[] REQUIRED_LIGHT = new String[]{"required_light", "required-light"};
+        private static final String[] BASE_BLOCK = new String[]{"base_block", "base-block"};
 
-        @SuppressWarnings("unchecked")
         @Override
-        public SurfaceSpreadingBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
-            int requiredLight = ResourceConfigUtils.getAsInt(arguments.getOrDefault("required-light", 9), "required-light");
-            String baseBlock = ResourceConfigUtils.requireNonEmptyStringOrThrow(arguments.getOrDefault("base-block", "minecraft:dirt"), "warning.config.block.behavior.surface_spreading.missing_base_block");
-            return new SurfaceSpreadingBlockBehavior(block, requiredLight, baseBlock, (Property<Boolean>) block.getProperty("snowy"));
+        public SurfaceSpreadingBlockBehavior create(BlockDefinition block, ConfigSection section) {
+            return new SurfaceSpreadingBlockBehavior(
+                    block,
+                    section.getInt(REQUIRED_LIGHT, 0),
+                    section.getString(BASE_BLOCK, "minecraft:dirt"),
+                    BlockBehaviorFactory.getOptionalProperty(block, "snowy", Boolean.class)
+            );
         }
     }
 }

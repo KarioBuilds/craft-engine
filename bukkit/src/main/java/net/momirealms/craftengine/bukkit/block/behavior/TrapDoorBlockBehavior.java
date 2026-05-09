@@ -1,26 +1,28 @@
 package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.antigrieflib.Flag;
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.InteractUtils;
 import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
-import net.momirealms.craftengine.core.block.behavior.IsPathFindableBlockBehavior;
-import net.momirealms.craftengine.core.block.properties.Property;
-import net.momirealms.craftengine.core.block.properties.type.SingleBlockHalf;
+import net.momirealms.craftengine.core.block.behavior.PathFindingBlock;
+import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.block.property.type.SingleBlockHalf;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.ItemKeys;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.sound.SoundData;
-import net.momirealms.craftengine.core.util.*;
+import net.momirealms.craftengine.core.util.Direction;
+import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
@@ -41,40 +43,40 @@ import org.bukkit.GameEvent;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.event.block.BlockRedstoneEvent;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 
 @SuppressWarnings("DuplicatedCode")
-public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPathFindableBlockBehavior {
+public final class TrapDoorBlockBehavior extends BukkitBlockBehavior implements PathFindingBlock {
     public static final BlockBehaviorFactory<TrapDoorBlockBehavior> FACTORY = new Factory();
-    private final Property<SingleBlockHalf> halfProperty;
-    private final Property<HorizontalDirection> facingProperty;
-    private final Property<Boolean> poweredProperty;
-    private final Property<Boolean> openProperty;
-    private final boolean canOpenWithHand;
-    private final boolean canOpenByWindCharge;
-    private final SoundData openSound;
-    private final SoundData closeSound;
+    public final Property<SingleBlockHalf> halfProperty;
+    public final Property<Direction> facingProperty;
+    public final Property<Boolean> poweredProperty;
+    public final Property<Boolean> openProperty;
+    public final Property<Boolean> waterloggedProperty;
+    public final boolean canOpenWithHand;
+    public final boolean canOpenByWindCharge;
+    public final SoundData openSound;
+    public final SoundData closeSound;
 
-    public TrapDoorBlockBehavior(CustomBlock block,
-                                 Property<SingleBlockHalf> halfProperty,
-                                 Property<HorizontalDirection> facingProperty,
-                                 Property<Boolean> poweredProperty,
-                                 Property<Boolean> openProperty,
-                                 boolean canOpenWithHand,
-                                 boolean canOpenByWindCharge,
-                                 SoundData openSound,
-                                 SoundData closeSound) {
+    private TrapDoorBlockBehavior(BlockDefinition block,
+                                  Property<SingleBlockHalf> halfProperty,
+                                  Property<Direction> facingProperty,
+                                  Property<Boolean> poweredProperty,
+                                  Property<Boolean> openProperty,
+                                  Property<Boolean> waterloggedProperty,
+                                  boolean canOpenWithHand,
+                                  boolean canOpenByWindCharge,
+                                  SoundData openSound,
+                                  SoundData closeSound) {
         super(block);
         this.halfProperty = halfProperty;
         this.facingProperty = facingProperty;
         this.poweredProperty = poweredProperty;
         this.openProperty = openProperty;
+        this.waterloggedProperty = waterloggedProperty;
         this.canOpenWithHand = canOpenWithHand;
         this.canOpenByWindCharge = canOpenByWindCharge;
         this.openSound = openSound;
@@ -82,11 +84,11 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
     }
 
     @Override
-    public Object updateShape(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public Object updateShape(Object thisBlock, Object[] args) {
         Object blockState = args[0];
-        if (super.waterloggedProperty != null) {
+        if (this.waterloggedProperty != null) {
             BlockStateUtils.getOptionalCustomBlockState(blockState).ifPresent(customState -> {
-                if (customState.get(super.waterloggedProperty)) {
+                if (customState.get(this.waterloggedProperty)) {
                     LevelUtils.scheduleFluidTick(args[updateShape$level], args[updateShape$blockPos], FluidsProxy.WATER, 5);
                 }
             });
@@ -96,14 +98,14 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
 
     @Override
     public ImmutableBlockState updateStateForPlacement(BlockPlaceContext context, ImmutableBlockState state) {
-        Object level = context.getLevel().serverWorld();
+        Object level = context.getLevel().minecraftWorld();
         Object clickedPos = LocationUtils.toBlockPos(context.getClickedPos());
         Direction clickedFace = context.getClickedFace();
         if (!context.replacingClickedBlock() && clickedFace.axis().isHorizontal()) {
-            state = state.with(this.facingProperty, clickedFace.toHorizontalDirection())
+            state = state.with(this.facingProperty, clickedFace)
                     .with(this.halfProperty, context.getClickedLocation().y - context.getClickedPos().y() > 0.5 ? SingleBlockHalf.TOP : SingleBlockHalf.BOTTOM);
         } else {
-            state = state.with(this.facingProperty, context.getHorizontalDirection().opposite().toHorizontalDirection())
+            state = state.with(this.facingProperty, context.getHorizontalDirection().opposite())
                     .with(this.halfProperty, clickedFace == Direction.UP ? SingleBlockHalf.BOTTOM : SingleBlockHalf.TOP);
         }
         if (SignalGetterProxy.INSTANCE.hasNeighborSignal(level, clickedPos)) {
@@ -124,7 +126,6 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    @SuppressWarnings("unchecked")
     private void playerToggle(UseOnContext context, ImmutableBlockState state) {
         Player player = context.getPlayer();
         if (player == null) return;
@@ -135,13 +136,13 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
             return;
         }
         this.toggle(state, world, pos, player);
-        if (!InteractUtils.isInteractable((org.bukkit.entity.Player) player.platformPlayer(), BlockStateUtils.fromBlockData(state.visualBlockState().literalObject()), context.getHitResult(), (Item<ItemStack>) context.getItem())) {
+        if (!InteractUtils.isInteractable((org.bukkit.entity.Player) player.platformPlayer(), BlockStateUtils.fromBlockData(state.visualBlockState().minecraftState()), context.getHitResult(), (Item) context.getItem())) {
             player.swingHand(context.getHand());
         }
     }
 
     @Override
-    public boolean isPathFindable(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public boolean isPathFindable(Object thisBlock, Object[] args) {
         Object type = VersionHelper.isOrAbove1_20_5() ? args[1] : args[3];
         Object blockState = args[0];
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
@@ -149,23 +150,23 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
         if (type == PathComputationTypeProxy.LAND || type == PathComputationTypeProxy.AIR) {
             return optionalCustomState.get().get(this.openProperty);
         } else if (type == PathComputationTypeProxy.WATER) {
-            return optionalCustomState.get().get(super.waterloggedProperty);
+            return optionalCustomState.get().get(this.waterloggedProperty);
         }
         return false;
     }
 
     @Override
-    public void onExplosionHit(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void preExplosionHit(Object thisBlock, Object[] args) {
         if (this.canOpenByWindCharge && ExplosionProxy.INSTANCE.canTriggerBlocks(args[3])) {
             Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(args[0]);
             if (optionalCustomState.isEmpty()) return;
-            this.toggle(optionalCustomState.get(), BukkitAdaptors.adapt(LevelProxy.INSTANCE.getWorld(args[1])), LocationUtils.fromBlockPos(args[2]), null);
+            this.toggle(optionalCustomState.get(), BukkitAdaptor.adapt(LevelProxy.INSTANCE.getWorld(args[1])), LocationUtils.fromBlockPos(args[2]), null);
         }
     }
 
     @SuppressWarnings("UnstableApiUsage")
     @Override
-    public void neighborChanged(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void neighborChanged(Object thisBlock, Object[] args) {
         Object blockState = args[0];
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
         if (optionalCustomState.isEmpty()) return;
@@ -186,7 +187,7 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
             hasSignal = event.getNewCurrent() > 0;
         }
 
-        World world = BukkitAdaptors.adapt(LevelProxy.INSTANCE.getWorld(level));
+        World world = BukkitAdaptor.adapt(LevelProxy.INSTANCE.getWorld(level));
         boolean changed = customState.get(this.openProperty) != hasSignal;
         if (hasSignal && changed) {
             Object abovePos = LocationUtils.above(blockPos);
@@ -212,7 +213,7 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
             this.playSound(LocationUtils.fromBlockPos(blockPos), world, hasSignal);
         }
 
-        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, customState.with(this.poweredProperty, hasSignal).customBlockState().literalObject(), UpdateFlags.UPDATE_CLIENTS);
+        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, customState.with(this.poweredProperty, hasSignal).customBlockState().minecraftState(), UpdateFlags.UPDATE_CLIENTS);
         if (this.waterloggedProperty != null && customState.get(this.waterloggedProperty)) {
             LevelUtils.scheduleFluidTick(level, blockPos, FluidsProxy.WATER, 5);
         }
@@ -220,7 +221,7 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
 
     private void toggle(ImmutableBlockState state, World world, BlockPos pos, @Nullable Player player) {
         ImmutableBlockState newState = state.cycle(this.openProperty);
-        LevelWriterProxy.INSTANCE.setBlock(world.serverWorld(), LocationUtils.toBlockPos(pos), newState.customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
+        LevelWriterProxy.INSTANCE.setBlock(world.minecraftWorld(), LocationUtils.toBlockPos(pos), newState.customBlockState().minecraftState(), UpdateFlags.UPDATE_ALL);
         boolean open = newState.get(this.openProperty);
         ((org.bukkit.World) world.platformWorld()).sendGameEvent(
                 player != null ? (org.bukkit.entity.Player) player.platformPlayer() : null,
@@ -242,25 +243,31 @@ public class TrapDoorBlockBehavior extends BukkitBlockBehavior implements IsPath
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static class Factory implements BlockBehaviorFactory<TrapDoorBlockBehavior> {
+        private static final String[] CAN_OPEN_WITH_HAND = new String[] {"can_open_with_hand", "can-open-with-hand"};
+        private static final String[] CAN_OPEN_BY_WIND_CHARGE = new String[] {"can_open_by_wind_charge", "can-open-by-wind-charge"};
 
         @Override
-        public TrapDoorBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
-            Property<SingleBlockHalf> half = (Property<SingleBlockHalf>) ResourceConfigUtils.requireNonNullOrThrow(block.getProperty("half"), "warning.config.block.behavior.trapdoor.missing_half");
-            Property<HorizontalDirection> facing = (Property<HorizontalDirection>) ResourceConfigUtils.requireNonNullOrThrow(block.getProperty("facing"), "warning.config.block.behavior.trapdoor.missing_facing");
-            Property<Boolean> open = (Property<Boolean>) ResourceConfigUtils.requireNonNullOrThrow(block.getProperty("open"), "warning.config.block.behavior.trapdoor.missing_open");
-            Property<Boolean> powered = (Property<Boolean>) ResourceConfigUtils.requireNonNullOrThrow(block.getProperty("powered"), "warning.config.block.behavior.trapdoor.missing_powered");
-            boolean canOpenWithHand = ResourceConfigUtils.getAsBoolean(arguments.getOrDefault("can-open-with-hand", true), "can-open-with-hand");
-            boolean canOpenByWindCharge = ResourceConfigUtils.getAsBoolean(arguments.getOrDefault("can-open-by-wind-charge", true), "can-open-by-wind-charge");
-            Map<String, Object> sounds = MiscUtils.castToMap(arguments.get("sounds"), true);
+        public TrapDoorBlockBehavior create(BlockDefinition block, ConfigSection section) {
+            ConfigSection soundSection = section.getSection("sounds");
             SoundData openSound = null;
             SoundData closeSound = null;
-            if (sounds != null) {
-                openSound = Optional.ofNullable(sounds.get("open")).map(obj -> SoundData.create(obj, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.ranged(0.9f, 1f))).orElse(null);
-                closeSound = Optional.ofNullable(sounds.get("close")).map(obj -> SoundData.create(obj, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.ranged(0.9f, 1f))).orElse(null);
+            if (soundSection != null) {
+                openSound = soundSection.getValue("open", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
+                closeSound = soundSection.getValue("close", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
             }
-            return new TrapDoorBlockBehavior(block, half, facing, powered, open, canOpenWithHand, canOpenByWindCharge, openSound, closeSound);
+            return new TrapDoorBlockBehavior(
+                    block,
+                    BlockBehaviorFactory.getProperty(section.path(), block, "half", SingleBlockHalf.class),
+                    BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class),
+                    BlockBehaviorFactory.getProperty(section.path(), block, "powered", Boolean.class),
+                    BlockBehaviorFactory.getProperty(section.path(), block, "open", Boolean.class),
+                    BlockBehaviorFactory.getOptionalProperty(block, "waterlogged", Boolean.class),
+                    section.getBoolean(CAN_OPEN_WITH_HAND, true),
+                    section.getBoolean(CAN_OPEN_BY_WIND_CHARGE, true),
+                    openSound,
+                    closeSound
+            );
         }
     }
 }

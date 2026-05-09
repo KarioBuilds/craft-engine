@@ -7,7 +7,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-public class VersionHelper {
+public final class VersionHelper {
+    private VersionHelper() {}
+
     public static final boolean IS_RUNNING_IN_DEV = Boolean.getBoolean("net.momirealms.craftengine.dev");
     public static final boolean PREMIUM = true;
     public static final MinecraftVersion MINECRAFT_VERSION;
@@ -20,6 +22,7 @@ public class VersionHelper {
     private static final boolean folia;
     private static final boolean paper;
     private static final boolean leaves;
+    private static final boolean canvas;
     private static final boolean v1_20;
     private static final boolean v1_20_1;
     private static final boolean v1_20_2;
@@ -40,6 +43,8 @@ public class VersionHelper {
     private static final boolean v1_21_10;
     private static final boolean v1_21_11;
     private static final boolean v26_1;
+    private static final boolean v26_1_1;
+    private static final boolean v26_1_2;
     private static final Class<?> UNOBFUSCATED_CLAZZ = Objects.requireNonNull(ReflectionUtils.getClazz(
             "net.minecraft.obfuscate.DontObfuscate", // 因为无混淆版本没有这个类所以说多写几个防止找不到了
             "net.minecraft.data.Main",
@@ -93,6 +98,8 @@ public class VersionHelper {
             v1_21_10 = version >= 12110;
             v1_21_11 = version >= 12111;
             v26_1 = version >= 260100;
+            v26_1_1 = version >= 260101;
+            v26_1_2 = version >= 260102;
 
             majorVersion = major;
             minorVersion = minor;
@@ -103,6 +110,7 @@ public class VersionHelper {
             folia = checkFolia();
             paper = checkPaper();
             leaves = checkLeaves();
+            canvas = checkCanvas();
         } catch (Exception e) {
             throw new RuntimeException("Failed to init VersionHelper", e);
         }
@@ -184,12 +192,20 @@ public class VersionHelper {
         return exists("org.leavesmc.leaves.bot.BotList");
     }
 
+    private static boolean checkCanvas() {
+        return exists("io.canvasmc.canvas.Config");
+    }
+
     public static boolean isFolia() {
         return folia;
     }
 
     public static boolean isPaper() {
         return paper;
+    }
+
+    public static boolean isCanvas() {
+        return canvas;
     }
 
     public static boolean isLeaves() {
@@ -278,5 +294,13 @@ public class VersionHelper {
 
     public static boolean isOrAbove26_1() {
         return v26_1;
+    }
+
+    public static boolean isOrAbove26_1_1() {
+        return v26_1_1;
+    }
+
+    public static boolean isOrAbove26_1_2() {
+        return v26_1_2;
     }
 }

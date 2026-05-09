@@ -8,6 +8,7 @@ import com.google.gson.JsonPrimitive;
 import net.momirealms.craftengine.core.pack.conflict.PathContext;
 import net.momirealms.craftengine.core.pack.mcmeta.PackVersion;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.GsonHelper;
 import net.momirealms.craftengine.core.util.Pair;
 
@@ -27,16 +28,16 @@ public final class MergePackMcMetaResolution implements Resolution {
         // 第一步，解析全部的mcmeta文件为json对象
         JsonObject mcmeta1;
         try {
-            mcmeta1 = GsonHelper.readJsonFile(file1).getAsJsonObject();
+            mcmeta1 = GsonHelper.readJsonFromFile(file1).getAsJsonObject();
         } catch (Exception e) {
-            CraftEngine.instance().logger().severe("Failed to parse mcmeta from " + file1);
+            CraftEngine.instance().logger().error("Failed to parse mcmeta from " + file1);
             return;
         }
         JsonObject mcmeta2;
         try {
-            mcmeta2 = GsonHelper.readJsonFile(file2).getAsJsonObject();
+            mcmeta2 = GsonHelper.readJsonFromFile(file2).getAsJsonObject();
         } catch (Exception e) {
-            CraftEngine.instance().logger().severe("Failed to parse mcmeta from " + file2);
+            CraftEngine.instance().logger().error("Failed to parse mcmeta from " + file2);
             return;
         }
         JsonObject merged = new JsonObject();
@@ -276,13 +277,13 @@ public final class MergePackMcMetaResolution implements Resolution {
         try {
             merge(existing.path(), conflict.path());
         } catch (Exception e) {
-            CraftEngine.instance().logger().severe("Failed to merge pack.mcmeta when resolving file conflicts for '" + existing.path()  + "' and '" + conflict.path() + "'", e);
+            CraftEngine.instance().logger().error("Failed to merge pack.mcmeta when resolving file conflicts for '" + existing.path()  + "' and '" + conflict.path() + "'", e);
         }
     }
 
     private static class Factory implements ResolutionFactory<MergePackMcMetaResolution> {
         @Override
-        public MergePackMcMetaResolution create(Map<String, Object> arguments) {
+        public MergePackMcMetaResolution create(ConfigSection section) {
             return INSTANCE;
         }
     }

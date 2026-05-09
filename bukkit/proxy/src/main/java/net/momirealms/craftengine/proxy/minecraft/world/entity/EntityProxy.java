@@ -1,6 +1,7 @@
 package net.momirealms.craftengine.proxy.minecraft.world.entity;
 
 import net.momirealms.craftengine.proxy.minecraft.world.damagesource.DamageSourceProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
 import net.momirealms.sparrow.reflection.clazz.SparrowClass;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.*;
@@ -84,6 +85,12 @@ public interface EntityProxy {
     @MethodInvoker(name = "getVehicleAttachmentPoint", activeIf = "min_version=1.20.5")
     Object getVehicleAttachmentPoint(Object target, @Type(clazz = EntityProxy.class) Object vehicle);
 
+    @FieldGetter(name = "vehicle")
+    Object getVehicle(Object target);
+
+    @FieldGetter(name = "eyeHeight")
+    float getEyeHeight(Object target);
+
     @MethodInvoker(name = "getPassengersRidingOffset", activeIf = "max_version=1.20.1")
     double getPassengersRidingOffset(Object target);
 
@@ -95,6 +102,9 @@ public interface EntityProxy {
 
     @MethodInvoker(name = "setDeltaMovement")
     void setDeltaMovement(Object target, double x, double y, double z);
+
+    @MethodInvoker(name = "setDeltaMovement")
+    void setDeltaMovement(Object target, @Type(clazz = Vec3Proxy.class) Object deltaMovement);
 
     @MethodInvoker(name = "getDeltaMovement")
     Object getDeltaMovement(Object target);
@@ -129,9 +139,21 @@ public interface EntityProxy {
     @MethodInvoker(name = "getBoundingBox")
     Object getBoundingBox(Object target);
 
-    @FieldGetter(name = "level")
+    @MethodInvoker(name = "level")
     Object getLevel(Object target);
 
     @FieldSetter(name = "level")
     void setLevel(Object target, Object level);
+
+    @MethodInvoker(name = "discard")
+    void discard(Object target);
+
+    @MethodInvoker(name = "isAlive")
+    boolean isAlive(Object target);
+
+    @MethodInvoker(name = "getEyeY")
+    double getEyeY(Object target);
+
+    @MethodInvoker(name = "isSilent")
+    boolean isSilent(Object target);
 }

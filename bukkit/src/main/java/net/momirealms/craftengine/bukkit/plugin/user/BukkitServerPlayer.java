@@ -8,33 +8,35 @@ import com.mojang.authlib.properties.PropertyMap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.kyori.adventure.text.Component;
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.api.CraftEngineFurniture;
-import net.momirealms.craftengine.bukkit.block.entity.BedBlockEntity;
-import net.momirealms.craftengine.bukkit.block.entity.BlockEntityHolder;
 import net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurniture;
+import net.momirealms.craftengine.bukkit.item.BukkitItem;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.gui.CraftEngineGUIHolder;
 import net.momirealms.craftengine.bukkit.util.*;
+import net.momirealms.craftengine.bukkit.world.WorldlyContainerHolder;
 import net.momirealms.craftengine.core.advancement.AdvancementType;
 import net.momirealms.craftengine.core.block.BlockStateWrapper;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.render.ConstantBlockEntityRenderer;
 import net.momirealms.craftengine.core.entity.culling.Cullable;
 import net.momirealms.craftengine.core.entity.culling.CullableHolder;
 import net.momirealms.craftengine.core.entity.culling.CullingData;
 import net.momirealms.craftengine.core.entity.culling.EntityCulling;
 import net.momirealms.craftengine.core.entity.data.EntityData;
-import net.momirealms.craftengine.core.entity.furniture.FurnitureHitData;
 import net.momirealms.craftengine.core.entity.furniture.FurnitureVariant;
+import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureLightData;
 import net.momirealms.craftengine.core.entity.furniture.hitbox.FurnitureHitBoxConfig;
+import net.momirealms.craftengine.core.entity.furniture.setting.FurnitureHitData;
 import net.momirealms.craftengine.core.entity.player.GameMode;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.pack.host.ResourcePackDownloadData;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.context.CooldownData;
@@ -60,10 +62,14 @@ import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.*;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.login.ClientboundLoginDisconnectPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.MinecraftServerProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerPlayerGameModeProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.network.ServerConfigurationPacketListenerImplProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.network.ServerGamePacketListenerImplProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.network.config.JoinWorldTaskProxy;
+import net.momirealms.craftengine.proxy.minecraft.server.network.config.ServerResourcePackConfigurationTaskProxy;
 import net.momirealms.craftengine.proxy.minecraft.sounds.SoundEventProxy;
 import net.momirealms.craftengine.proxy.minecraft.util.thread.BlockableEventLoopProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.effect.MobEffectsProxy;
@@ -76,8 +82,11 @@ import net.momirealms.craftengine.proxy.minecraft.world.entity.player.AbilitiesP
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.PlayerProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.inventory.InventoryMenuProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.BlockAndLightGetterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.SoundTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.chunk.ChunkSourceProxy;
+import net.momirealms.craftengine.proxy.paper.chunk.system.entity.RegionizedPlayerChunkLoaderProxy;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -89,6 +98,7 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.persistence.PersistentDataType;
@@ -122,8 +132,8 @@ public class BukkitServerPlayer extends Player {
     private PropertyMap propertyMap;
     private boolean isNameVerified;
     private boolean isUUIDVerified;
-    private ConnectionState decoderState; // inbound(decode|c2s)
-    private ConnectionState encoderState; // outbound(encode|s2c)
+    private ConnectionState decoderState = ConnectionState.HANDSHAKING; // inbound(decode|c2s)
+    private ConnectionState encoderState = ConnectionState.HANDSHAKING; // outbound(encode|s2c)
     private boolean shouldProcessFinishConfiguration = true;
     private final Set<UUID> resourcePackUUID = Collections.synchronizedSet(new HashSet<>());
     // some references
@@ -175,15 +185,15 @@ public class BukkitServerPlayer extends Player {
     // 客户端选择的语言
     private Locale clientLocale;
     // 跟踪到的方块实体渲染器
-    private final Map<BlockPos, CullableHolder> trackedBlockEntityRenderers = new ConcurrentHashMap<>();
-    private final Map<Integer, CullableHolder> trackedEntities = new ConcurrentHashMap<>();
+    private Map<BlockPos, CullableHolder> trackedBlockEntityRenderers;
+    private Map<Integer, CullableHolder> trackedEntities;
     private final EntityCulling culling;
     private Vec3d firstPersonCameraVec3;
     private Vec3d thirdPersonCameraVec3;
     // 是否启用实体剔除
     private boolean enableEntityCulling;
     // 玩家眼睛所在位置
-    private Location eyeLocation;
+    private Vec3d eyeLocation;
     // 是否启用家具调试
     private boolean enableFurnitureDebug;
     // 上一次对准的家具
@@ -204,17 +214,13 @@ public class BukkitServerPlayer extends Player {
     private int preventBreakTick;
     // 用于辨别是否在范围挖掘
     private boolean isRangeMining;
-    // 家具击打记录
-    private final FurnitureHitData furnitureHitData = new FurnitureHitData();
     // 缓存的已接收的地图数据，为了防止动态物品展示框渲染器在渲染地图物品的时候重复发送地图数据导致服务器带宽消耗过大
-    private final Cache<Object, Boolean> receivedMapData = CacheBuilder.newBuilder()
-            .weakKeys()
-            .expireAfterAccess(30, TimeUnit.MINUTES)
-            .concurrencyLevel(4)
-            .build();
-    private final Set<UniqueKey> obtainedItems = new HashSet<>();
-    // 玩家正在使用的床方块实体
-    private BedBlockEntity bedBlockEntity;
+    private Cache<Object, Boolean> receivedMapData;
+    private Set<UniqueKey> obtainedItems;
+    // 家具击打记录
+    private FurnitureHitData furnitureHitData;
+    // 缓存可见的家具光源数据
+    private FurnitureLightData furnitureLightData;
 
     public BukkitServerPlayer(BukkitCraftEngine plugin, @Nullable Channel channel) {
         this.channel = channel;
@@ -238,6 +244,7 @@ public class BukkitServerPlayer extends Player {
         this.isUUIDVerified = true;
         this.name = player.getName();
         this.isNameVerified = true;
+        this.initPlayStageFields();
         byte[] bytes = player.getPersistentDataContainer().get(KeyUtils.toNamespacedKey(CooldownData.COOLDOWN_KEY), PersistentDataType.BYTE_ARRAY);
         String locale = player.getPersistentDataContainer().get(KeyUtils.toNamespacedKey(SELECTED_LOCALE_KEY), PersistentDataType.STRING);
         Double scale = player.getPersistentDataContainer().get(KeyUtils.toNamespacedKey(ENTITY_CULLING_DISTANCE_SCALE), PersistentDataType.DOUBLE);
@@ -246,9 +253,7 @@ public class BukkitServerPlayer extends Player {
         this.enableFurnitureDebug = Optional.ofNullable(player.getPersistentDataContainer().get(KeyUtils.toNamespacedKey(ENABLE_FURNITURE_DEBUG), PersistentDataType.BOOLEAN)).orElse(false);
         this.culling.setDistanceScale(Optional.ofNullable(scale).orElse(1.0));
         this.selectedLocale = TranslationManager.parseLocale(locale);
-        this.trackedChunks = ConcurrentLong2ReferenceChainedHashTable.createWithCapacity(512, 0.5f);
-        this.entityTypeView = new ConcurrentHashMap<>(256);
-        this.eyeLocation = getEyeLocation();
+        this.eyeLocation = getEyePos();
         try {
             this.cooldownData = CooldownData.fromBytes(bytes);
         } catch (IOException e) {
@@ -261,6 +266,21 @@ public class BukkitServerPlayer extends Player {
                 this.obtainedItems.add(UniqueKey.create(BukkitItemManager.instance().wrap(item).id()));
             }
         }
+    }
+
+    private void initPlayStageFields() {
+        this.trackedBlockEntityRenderers = new ConcurrentHashMap<>(64);
+        this.trackedEntities = new ConcurrentHashMap<>(64);
+        this.trackedChunks = ConcurrentLong2ReferenceChainedHashTable.createWithCapacity(512, 0.5f);
+        this.entityTypeView = new ConcurrentHashMap<>(256);
+        this.obtainedItems = new HashSet<>(32);
+        this.furnitureHitData = new FurnitureHitData();
+        this.furnitureLightData = new FurnitureLightData();
+        this.receivedMapData = CacheBuilder.newBuilder()
+                .weakKeys()
+                .expireAfterAccess(30, TimeUnit.MINUTES)
+                .concurrencyLevel(4)
+                .build();
     }
 
     @Override
@@ -340,7 +360,7 @@ public class BukkitServerPlayer extends Player {
     }
 
     @Override
-    public void sendToast(Component text, Item<?> icon, AdvancementType type) {
+    public void sendToast(Component text, Item icon, AdvancementType type) {
         this.plugin.advancementManager().sendToast(this, icon, text, type);
     }
 
@@ -400,6 +420,11 @@ public class BukkitServerPlayer extends Player {
     @Override
     public int gameTicks() {
         return this.gameTicks;
+    }
+
+    @Override
+    public boolean hasInteractionInThisTick() {
+        return this.gameTicks == this.lastSuccessfulInteraction;
     }
 
     @Override
@@ -484,10 +509,9 @@ public class BukkitServerPlayer extends Player {
         platformPlayer().playSound(new Location(null, pos.x(), pos.y(), pos.z()), sound.toString(), SoundUtils.toBukkit(source), volume, pitch);
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public void giveItem(Item<?> item) {
-        PlayerUtils.giveItem(this, item.count(), (Item<ItemStack>) item);
+    public void giveItem(Item item, boolean spawnFakeEntity) {
+        PlayerUtils.giveItem(this, item.count(), item, spawnFakeEntity);
     }
 
     @Override
@@ -591,6 +615,26 @@ public class BukkitServerPlayer extends Player {
     }
 
     @Override
+    public void resendChunks() {
+        Object chunkLoader = ServerPlayerProxy.INSTANCE.getChunkLoader(serverPlayer());
+        LongOpenHashSet sentChunks = RegionizedPlayerChunkLoaderProxy.PlayerChunkLoaderDataProxy.INSTANCE.getSentChunks(chunkLoader);
+        if (sentChunks.isEmpty()) {
+            return;
+        }
+        sentChunks = sentChunks.clone();
+        Object serverLevel = CraftWorldProxy.INSTANCE.getWorld(platformPlayer().getWorld());
+        Object lightEngine = BlockAndLightGetterProxy.INSTANCE.getLightEngine(serverLevel);
+        Object chunkSource = ServerLevelProxy.INSTANCE.getChunkSource(serverLevel);
+        for (long chunkPos : sentChunks) {
+            int chunkX = (int) chunkPos;
+            int chunkZ = (int) (chunkPos >> 32);
+            Object levelChunk = ChunkSourceProxy.INSTANCE.getChunk(chunkSource, chunkX, chunkZ, false);
+            Object packet = ClientboundLevelChunkWithLightPacketProxy.INSTANCE.newInstance(levelChunk, lightEngine, null, null);
+            sendPacket(packet, true);
+        }
+    }
+
+    @Override
     public void tick() {
         // 还没上线或是已经离线
         Object serverPlayer = serverPlayer();
@@ -634,14 +678,7 @@ public class BukkitServerPlayer extends Player {
 
         // 更新眼睛位置
         {
-            org.bukkit.entity.Player bukkitPlayer = platformPlayer();
-            Location unsureEyeLocation = bukkitPlayer.getEyeLocation();
-            Entity vehicle = bukkitPlayer.getVehicle();
-            if (vehicle != null) {
-                Vec3d mountPos = EntityUtils.getPassengerRidingPosition(vehicle, bukkitPlayer);
-                unsureEyeLocation.set(mountPos.x, mountPos.y + bukkitPlayer.getEyeHeight(), mountPos.z);
-            }
-            this.eyeLocation = unsureEyeLocation;
+            this.eyeLocation = getEyePos();
         }
 
         // 本tick内有挥手
@@ -656,7 +693,7 @@ public class BukkitServerPlayer extends Player {
                         // 连续挥手且没被重置
                         if (++this.awfulBreakFixer >= 4) {
                             this.awfulBreakFixer = 0;
-                            RayTraceResult result = rayTrace(this.eyeLocation, getCachedInteractionRange(), FluidCollisionMode.NEVER);
+                            RayTraceResult result = rayTrace(new Location(platformPlayer().getWorld(), this.eyeLocation.x, this.eyeLocation.y, this.eyeLocation.z), getCachedInteractionRange(), FluidCollisionMode.NEVER);
                             if (result != null) {
                                 Entity hitEntity = result.getHitEntity();
                                 if (hitEntity == null) {
@@ -678,10 +715,9 @@ public class BukkitServerPlayer extends Player {
         }
 
         // 实体剔除更新相机位置
-        if (Config.entityCullingRayTracing()) {
+        if (Config.enableEntityCulling()) {
             org.bukkit.entity.Player player = platformPlayer();
-            Location eyeLocation = this.eyeLocation.clone();
-            this.firstPersonCameraVec3 = LocationUtils.toVec3d(eyeLocation);
+            this.firstPersonCameraVec3 = this.eyeLocation;
             int distance = 4;
             if (VersionHelper.isOrAbove1_21_6()) {
                 Entity vehicle = player.getVehicle();
@@ -689,7 +725,14 @@ public class BukkitServerPlayer extends Player {
                     distance = 8;
                 }
             }
-            this.thirdPersonCameraVec3 = LocationUtils.toVec3d(eyeLocation.subtract(eyeLocation.getDirection().multiply(distance)));
+
+            float rotX = player.getYaw();
+            float rotY = player.getPitch();
+            float y = -MiscUtils.sin(MiscUtils.toRadians(rotY));
+            float xz = MiscUtils.cos(MiscUtils.toRadians(rotY));
+            float x = -xz * MiscUtils.sin(MiscUtils.toRadians(rotX));
+            float z = xz * MiscUtils.cos(MiscUtils.toRadians(rotX));
+            this.thirdPersonCameraVec3 = this.eyeLocation.subtract(x * distance, y * distance, z * distance);
         }
     }
 
@@ -756,25 +799,26 @@ public class BukkitServerPlayer extends Player {
     private void updateGUI() {
         org.bukkit.inventory.Inventory top = !VersionHelper.isOrAbove1_21() ? LegacyInventoryUtils.getTopInventory(platformPlayer()) : platformPlayer().getOpenInventory().getTopInventory();
         if (!InventoryUtils.isCustomContainer(top)) return;
-        if (top.getHolder() instanceof CraftEngineGUIHolder holder) {
+        InventoryHolder topHolder = top.getHolder();
+        if (topHolder instanceof CraftEngineGUIHolder holder) {
             holder.gui().onTimer();
-        } else if (top.getHolder() instanceof BlockEntityHolder holder) {
-            BlockEntity blockEntity = holder.blockEntity();
-            BlockPos blockPos = blockEntity.pos();
-            if (!canInteractWithBlock(blockPos, 4d)) {
-                platformPlayer().closeInventory();
+        } if (topHolder instanceof WorldlyContainerHolder itemStorage) {
+            WorldPosition pos = itemStorage.pos();
+            if (!canInteractPoint(pos.toVec3d(), 4d)) {
+                closeInventory();
             }
         }
     }
 
     public boolean canInteractWithBlock(BlockPos pos, double distance) {
         double d = this.getCachedInteractionRange() + distance;
-        return (new AABB(pos)).distanceToSqr(LocationUtils.toVec3d(this.eyeLocation)) < d * d;
+        return (new AABB(pos)).distanceToSqr(this.eyeLocation) < d * d;
     }
 
+    @Override
     public boolean canInteractPoint(Vec3d pos, double distance) {
         double d = this.getCachedInteractionRange() + distance;
-        return Vec3d.distanceToSqr(LocationUtils.toVec3d(this.eyeLocation), pos) < d * d;
+        return Vec3d.distanceToSqr(this.eyeLocation, pos) < d * d;
     }
 
     @Override
@@ -783,7 +827,7 @@ public class BukkitServerPlayer extends Player {
         float progress = BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getDestroyProgress(blockState, serverPlayer(), CraftWorldProxy.INSTANCE.getWorld(platformPlayer().getWorld()), LocationUtils.toBlockPos(pos));
         if (optionalCustomState.isPresent()) {
             ImmutableBlockState customState = optionalCustomState.get();
-            Item<ItemStack> tool = getItemInHand(InteractionHand.MAIN_HAND);
+            Item tool = getItemInHand(InteractionHand.MAIN_HAND);
             // 如果自定义方块在服务端侧未使用正确的工具，那么需要还原挖掘速度
             if (!BlockStateUtils.isCorrectTool(customState, tool)) {
                 progress *= customState.settings().incorrectToolSpeed();
@@ -826,7 +870,7 @@ public class BukkitServerPlayer extends Player {
                     // 1. 此时客户端觉得自己挖掘速度为0
                     boolean attributeCannotBreak = VersionHelper.isOrAbove1_20_5() && !this.clientSideCanBreak;
                     // 2. 客户端侧的方块就是不能秒破
-                    if (attributeCannotBreak || getDestroyProgress(vanillaBlockState.literalObject(), pos) < 1f) {
+                    if (attributeCannotBreak || getDestroyProgress(vanillaBlockState.minecraftState(), pos) < 1f) {
                         Object levelEventPacket = ClientboundLevelEventPacketProxy.INSTANCE.newInstance(
                                 WorldEvents.BLOCK_BREAK_EFFECT, LocationUtils.toBlockPos(pos), BlockStateUtils.blockStateToId(state), false);
                         sendPacket(levelEventPacket, false);
@@ -858,7 +902,7 @@ public class BukkitServerPlayer extends Player {
                 if (VersionHelper.isOrAbove1_20_5()) {
                     Object serverPlayer = serverPlayer();
                     Object attributeInstance = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer, AttributesProxy.BLOCK_BREAK_SPEED);
-                    sendPacket(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance(entityId(), Lists.newArrayList(attributeInstance)), true);
+                    sendPacket(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(entityId(), Lists.newArrayList(attributeInstance)), true);
                 } else {
                     resetEffect(MobEffectsProxy.MINING_FATIGUE);
                     resetEffect(MobEffectsProxy.HASTE);
@@ -866,10 +910,10 @@ public class BukkitServerPlayer extends Player {
             } else {
                 if (VersionHelper.isOrAbove1_20_5()) {
                     Object attributeModifier = VersionHelper.isOrAbove1_21() ?
-                            AttributeModifierProxy.INSTANCE.newInstance(KeyUtils.toIdentifier(Key.DEFAULT_NAMESPACE, "custom_hardness"), -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE) :
-                            AttributeModifierProxy.INSTANCE.newInstance(UUID.randomUUID(), Key.DEFAULT_NAMESPACE + ":custom_hardness", -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE);
+                            AttributeModifierProxy.INSTANCE.newInstance(KeyUtils.toIdentifier(Key.CRAFTENGINE_NAMESPACE, "custom_hardness"), -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE) :
+                            AttributeModifierProxy.INSTANCE.newInstance(UUID.randomUUID(), Key.CRAFTENGINE_NAMESPACE + ":custom_hardness", -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE);
                     Object attributeSnapshot = ClientboundUpdateAttributesPacketProxy.AttributeSnapshotProxy.INSTANCE.newInstance(AttributesProxy.BLOCK_BREAK_SPEED, 1d, Lists.newArrayList(attributeModifier));
-                    Object newPacket = ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance(entityId(), Lists.newArrayList(attributeSnapshot));
+                    Object newPacket = ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$1(entityId(), Lists.newArrayList(attributeSnapshot));
                     sendPacket(newPacket, true);
                 } else {
                     Object fatiguePacket = MobEffectUtils.createPacket(MobEffectsProxy.MINING_FATIGUE, entityId(), (byte) 9, -1, false, false, false);
@@ -952,7 +996,7 @@ public class BukkitServerPlayer extends Player {
         // 进行实现追踪找到指向的方块
         org.bukkit.entity.Player player = platformPlayer();
         double range = getCachedInteractionRange();
-        RayTraceResult result = rayTrace(this.eyeLocation, range, FluidCollisionMode.NEVER);
+        RayTraceResult result = rayTrace(new Location(player.getWorld(), this.eyeLocation.x, this.eyeLocation.y, this.eyeLocation.z, yRot(), xRot()), range, FluidCollisionMode.NEVER);
         if (result == null) return;
         if (result.getHitEntity() != null) return;
         Block hitBlock = result.getHitBlock();
@@ -971,7 +1015,7 @@ public class BukkitServerPlayer extends Player {
         Object serverPlayer = serverPlayer();
 
         // check item in hand
-        Item<ItemStack> item = this.getItemInHand(InteractionHand.MAIN_HAND);
+        BukkitItem item = this.getItemInHand(InteractionHand.MAIN_HAND);
 
         // 发送破坏中音效
         if (currentTick - this.lastHitBlockTime > 3) {
@@ -991,7 +1035,7 @@ public class BukkitServerPlayer extends Player {
             Object gameMode = ServerPlayerProxy.INSTANCE.getGameMode(serverPlayer);
             ServerPlayerGameModeProxy.INSTANCE.setIsDestroyingBlock(gameMode, false);
             if (!item.isEmpty()) {
-                Material itemMaterial = item.getItem().getType();
+                Material itemMaterial = item.getBukkitItem().getType();
                 // creative mode + invalid item in hand
                 if (canInstabuild() && (itemMaterial == Material.DEBUG_STICK
                         || itemMaterial == Material.TRIDENT
@@ -1021,7 +1065,7 @@ public class BukkitServerPlayer extends Player {
                     // for simplified adventure break, switch mayBuild temporarily
                     if (isAdventureMode() && Config.simplifyAdventureBreakCheck()) {
                         // check the appearance state
-                        if (canBreak(hitPos, customState.visualBlockState().literalObject())) {
+                        if (canBreak(hitPos, customState.visualBlockState().minecraftState())) {
                             // Error might occur so we use try here
                             Object abilities = PlayerProxy.INSTANCE.getAbilities(serverPlayer);
                             try {
@@ -1073,7 +1117,7 @@ public class BukkitServerPlayer extends Player {
             double d1 = (double) hitPos.y() - other.getY();
             double d2 = (double) hitPos.z() - other.getZ();
             if (d0 * d0 + d1 * d1 + d2 * d2 < 32 * 32) {
-                BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(other);
+                BukkitServerPlayer serverPlayer = BukkitAdaptor.adapt(other);
                 if (serverPlayer == null) continue;
                 serverPlayer.sendPacket(packet, false);
             }
@@ -1143,28 +1187,28 @@ public class BukkitServerPlayer extends Player {
 
     @NotNull
     @Override
-    public Item<ItemStack> getItemInHand(InteractionHand hand) {
+    public BukkitItem getItemInHand(InteractionHand hand) {
         PlayerInventory inventory = platformPlayer().getInventory();
         return BukkitItemManager.instance().wrap(hand == InteractionHand.MAIN_HAND ? inventory.getItemInMainHand() : inventory.getItemInOffHand());
     }
 
     @NotNull
     @Override
-    public Item<ItemStack> getItemBySlot(int slot) {
+    public BukkitItem getItemBySlot(int slot) {
         PlayerInventory inventory = platformPlayer().getInventory();
         return BukkitItemManager.instance().wrap(inventory.getItem(slot));
     }
 
     @Override
-    public void setItemInHand(InteractionHand hand, Item<?> item) {
+    public void setItemInHand(InteractionHand hand, Item item) {
         PlayerInventory inventory = platformPlayer().getInventory();
         EquipmentSlot slot = hand == InteractionHand.MAIN_HAND ? EquipmentSlot.HAND : EquipmentSlot.OFF_HAND;
-        inventory.setItem(slot, (ItemStack) item.getItem());
+        inventory.setItem(slot, ((BukkitItem) item).getBukkitItem());
     }
 
     @Override
     public World world() {
-        return BukkitAdaptors.adapt(platformPlayer().getWorld());
+        return BukkitAdaptor.adapt(platformPlayer().getWorld());
     }
 
     @Override
@@ -1352,6 +1396,25 @@ public class BukkitServerPlayer extends Player {
     }
 
     @Override
+    public double health() {
+        return platformPlayer().getHealth();
+    }
+
+    @Override
+    public void setHealth(double amount) {
+        platformPlayer().setHealth(amount);
+    }
+
+    @Override
+    public double maxHealth() {
+        if (VersionHelper.isOrAbove1_21()) {
+            return Objects.requireNonNull(platformPlayer().getAttribute(Attribute.MAX_HEALTH)).getValue();
+        } else {
+            return LegacyAttributeUtils.getMaxHealth(platformPlayer());
+        }
+    }
+
+    @Override
     public int foodLevel() {
         return platformPlayer().getFoodLevel();
     }
@@ -1465,7 +1528,7 @@ public class BukkitServerPlayer extends Player {
             if (player != null) {
                 return player.locale();
             } else {
-                return Locale.US;
+                return Locale.ENGLISH;
             }
         }
     }
@@ -1561,7 +1624,7 @@ public class BukkitServerPlayer extends Player {
     }
 
     @Override
-    public void sendTotemAnimation(Item<?> totem, @Nullable SoundData sound, boolean silent) {
+    public void sendTotemAnimation(Item totem, @Nullable SoundData sound, boolean silent) {
         PlayerUtils.sendTotemAnimation(this, totem, sound, silent);
     }
 
@@ -1593,12 +1656,20 @@ public class BukkitServerPlayer extends Player {
     }
 
     @Override
+    public void removeTrackedBlockEntities(BlockPos pos) {
+        CullableHolder remove = this.trackedBlockEntityRenderers.remove(pos);
+        if (remove != null && remove.isShown) {
+            remove.cullable.hide(this);
+        }
+    }
+
+    @Override
     public void clearTrackedBlockEntities() {
         this.trackedBlockEntityRenderers.clear();
     }
 
     @Override
-    public int clearOrCountMatchingInventoryItems(Predicate<Item<?>> predicate, int count) {
+    public int clearOrCountMatchingInventoryItems(Predicate<Item> predicate, int count) {
         Predicate<Object> nmsPredicate = nmsStack -> predicate.test(this.plugin.itemManager().wrap(ItemStackUtils.asCraftMirror(nmsStack)));
         Object inventory = PlayerProxy.INSTANCE.getInventory(serverPlayer());
         Object inventoryMenu = PlayerProxy.INSTANCE.getInventoryMenu(serverPlayer());
@@ -1643,6 +1714,11 @@ public class BukkitServerPlayer extends Player {
     }
 
     @Override
+    public FurnitureLightData furnitureLightData() {
+        return this.furnitureLightData;
+    }
+
+    @Override
     public void playParticle(Key particleId, double x, double y, double z) {
         Particle particle = Registry.PARTICLE_TYPE.get(KeyUtils.toNamespacedKey(particleId));
         if (particle != null) {
@@ -1651,25 +1727,23 @@ public class BukkitServerPlayer extends Player {
     }
 
     public Location getEyeLocation() {
-        org.bukkit.entity.Player player = platformPlayer();
-        Location eyeLocation = player.getEyeLocation();
-        Entity vehicle = player.getVehicle();
+        Object serverPlayer = serverPlayer();
+        Object vehicle = EntityProxy.INSTANCE.getVehicle(serverPlayer);
         if (vehicle != null) {
-            Vec3d mountPos = EntityUtils.getPassengerRidingPosition(vehicle, player);
-            eyeLocation.set(mountPos.x, mountPos.y + player.getEyeHeight(), mountPos.z);
+            Vec3d mountPos = EntityUtils.getPassengerRidingPosition(vehicle, serverPlayer);
+            return new Location(platformPlayer().getWorld(), mountPos.x, mountPos.y + EntityProxy.INSTANCE.getEyeHeight(serverPlayer), mountPos.z);
         }
-        return eyeLocation;
+        return platformPlayer().getEyeLocation();
     }
 
     public Vec3d getEyePos() {
-        org.bukkit.entity.Player player = platformPlayer();
-        Entity vehicle = player.getVehicle();
+        Object serverPlayer = serverPlayer();
+        Object vehicle = EntityProxy.INSTANCE.getVehicle(serverPlayer);
         if (vehicle != null) {
-            Vec3d mountPos = EntityUtils.getPassengerRidingPosition(vehicle, player);
-            return new Vec3d(mountPos.x, mountPos.y + player.getEyeHeight(), mountPos.z);
+            Vec3d mountPos = EntityUtils.getPassengerRidingPosition(vehicle, serverPlayer);
+            return new Vec3d(mountPos.x, mountPos.y + EntityProxy.INSTANCE.getEyeHeight(serverPlayer), mountPos.z);
         } else {
-            Location location = player.getLocation();
-            return new Vec3d(location.getX(), location.getY() + player.getEyeHeight(), location.getZ());
+            return new Vec3d(EntityProxy.INSTANCE.getXo(serverPlayer), EntityProxy.INSTANCE.getEyeY(serverPlayer), EntityProxy.INSTANCE.getZo(serverPlayer));
         }
     }
 
@@ -1705,15 +1779,31 @@ public class BukkitServerPlayer extends Player {
         return this.obtainedItems;
     }
 
-    @Nullable
-    public BedBlockEntity bedBlockEntity() {
-        return bedBlockEntity;
-    }
-
-    public void setBedBlockEntity(@Nullable BedBlockEntity bedBlockEntity) {
-        if (this.bedBlockEntity != null) {
-            this.bedBlockEntity.setOccupier(null);
+    @Override
+    public void addResourcePackTasks(List<ResourcePackDownloadData> dataList) {
+        if (dataList.isEmpty()) return;
+        if (VersionHelper.isOrAbove1_20_2()) {
+            ChannelHandler connection = connection();
+            if (connection == null) return;
+            Object packetListener = ConnectionProxy.INSTANCE.getPacketListener(connection);
+            if (!ServerConfigurationPacketListenerImplProxy.CLASS.isInstance(packetListener)) return;
+            Queue<Object> tasks = ServerConfigurationPacketListenerImplProxy.INSTANCE.getConfigurationTasks(packetListener);
+            boolean removed = tasks.removeIf(JoinWorldTaskProxy.CLASS::isInstance);
+            if (VersionHelper.isOrAbove1_20_3()) {
+                for (ResourcePackDownloadData data : dataList) {
+                    tasks.add(ServerResourcePackConfigurationTaskProxy.INSTANCE.newInstance(ResourcePackUtils.createServerResourcePackInfo(data.uuid(), data.url(), data.sha1())));
+                    addResourcePackUUID(data.uuid());
+                }
+            } else {
+                ResourcePackDownloadData data = dataList.getFirst();
+                tasks.add(ServerResourcePackConfigurationTaskProxy.INSTANCE.newInstance(ResourcePackUtils.createServerResourcePackInfo(data.uuid(), data.url(), data.sha1())));
+            }
+            if (removed) {
+                tasks.add(JoinWorldTaskProxy.INSTANCE.newInstance());
+            }
+        } else {
+            ResourcePackDownloadData data = dataList.getFirst();
+            sendPacket(ResourcePackUtils.createPacket(data.uuid(), data.url(), data.sha1()), true);
         }
-        this.bedBlockEntity = bedBlockEntity;
     }
 }

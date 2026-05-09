@@ -7,43 +7,40 @@ import net.momirealms.craftengine.core.registry.WritableRegistry;
 import net.momirealms.craftengine.core.util.FriendlyByteBuf;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.ResourceKey;
+import net.momirealms.craftengine.core.util.VersionHelper;
 
 import java.util.function.BiFunction;
 
-@SuppressWarnings({"unchecked", "rawtypes"})
 public final class SlotDisplayTypes {
     private SlotDisplayTypes() {}
 
-    public static final Key EMPTY = Key.of("empty");
-    public static final Key ANY_FUEL = Key.of("any_fuel");
-    public static final Key ITEM = Key.of("item");
-    public static final Key ITEM_STACK = Key.of("item_stack");
-    public static final Key TAG = Key.of("tag");
-    public static final Key SMITHING_TRIM = Key.of("smithing_trim");
-    public static final Key WITH_REMAINDER = Key.of("with_remainder");
-    public static final Key COMPOSITE = Key.of("composite");
+    public static final SlotDisplay.Type<EmptySlotDisplay> EMPTY = register(Key.of("empty"), EmptySlotDisplay::read);
+    public static final SlotDisplay.Type<AnyFuelDisplay> ANY_FUEL = register(Key.of("any_fuel"), AnyFuelDisplay::read);
+    public static final SlotDisplay.Type<WithAnyPotionDisplay> WITH_ANY_POTION = registerIf(Key.of("with_any_potion"), WithAnyPotionDisplay::read, VersionHelper.isOrAbove26_1());
+    public static final SlotDisplay.Type<OnlyWithComponentDisplay> ONLY_WITH_COMPONENT = registerIf(Key.of("only_with_component"), OnlyWithComponentDisplay::read, VersionHelper.isOrAbove26_1());
+    public static final SlotDisplay.Type<ItemSlotDisplay> ITEM = register(Key.of("item"), ItemSlotDisplay::read);
+    public static final SlotDisplay.Type<ItemStackSlotDisplay> ITEM_STACK = register(Key.of("item_stack"), ItemStackSlotDisplay::read);
+    public static final SlotDisplay.Type<TagSlotDisplay> TAG = register(Key.of("tag"), TagSlotDisplay::read);
+    public static final SlotDisplay.Type<DyedSlotDisplay> DYED = registerIf(Key.of("dyed"), DyedSlotDisplay::read, VersionHelper.isOrAbove26_1());
+    public static final SlotDisplay.Type<SmithingTrimDemoSlotDisplay> SMITHING_TRIM = register(Key.of("smithing_trim"), SmithingTrimDemoSlotDisplay::read);
+    public static final SlotDisplay.Type<WithRemainderSlotDisplay> WITH_REMAINDER = register(Key.of("with_remainder"), WithRemainderSlotDisplay::read);
+    public static final SlotDisplay.Type<CompositeSlotDisplay> COMPOSITE = register(Key.of("composite"), CompositeSlotDisplay::read);
 
     public static void init() {
     }
 
-    static {
-        register(EMPTY, new SlotDisplay.Type(createReaderFunction(EmptySlotDisplay::read)));
-        register(ANY_FUEL, new SlotDisplay.Type(createReaderFunction(AnyFuelDisplay::read)));
-        register(ITEM, new SlotDisplay.Type(createReaderFunction(ItemSlotDisplay::read)));
-        register(ITEM_STACK, new SlotDisplay.Type(createReaderFunction(ItemStackSlotDisplay::read)));
-        register(TAG, new SlotDisplay.Type(createReaderFunction(TagSlotDisplay::read)));
-        register(SMITHING_TRIM, new SlotDisplay.Type(createReaderFunction(SmithingTrimDemoSlotDisplay::read)));
-        register(WITH_REMAINDER, new SlotDisplay.Type(createReaderFunction(WithRemainderSlotDisplay::read)));
-        register(COMPOSITE, new SlotDisplay.Type(createReaderFunction(CompositeSlotDisplay::read)));
+    public static <T extends SlotDisplay> SlotDisplay.Type<T> register(Key key, BiFunction<FriendlyByteBuf, FriendlyByteBuf.Reader<Item>, T> function) {
+        SlotDisplay.Type<T> type = new SlotDisplay.Type<>(key, function);
+        ((WritableRegistry<SlotDisplay.Type<? extends SlotDisplay>>) BuiltInRegistries.SLOT_DISPLAY_TYPE)
+                .register(ResourceKey.create(Registries.SLOT_DISPLAY_TYPE.location(), key), type);
+        return type;
     }
 
-    private static <I> BiFunction<FriendlyByteBuf, FriendlyByteBuf.Reader<Item<I>>, SlotDisplay<I>> createReaderFunction(
-            BiFunction<FriendlyByteBuf, FriendlyByteBuf.Reader, SlotDisplay> function) {
-        return (BiFunction) function;
-    }
-    
-    public static <I> void register(Key key, SlotDisplay.Type<I> type) {
-        ((WritableRegistry<SlotDisplay.Type<?>>) BuiltInRegistries.SLOT_DISPLAY_TYPE)
+    public static <T extends SlotDisplay> SlotDisplay.Type<T> registerIf(Key key, BiFunction<FriendlyByteBuf, FriendlyByteBuf.Reader<Item>, T> function, boolean register) {
+        if (!register) return null;
+        SlotDisplay.Type<T> type = new SlotDisplay.Type<>(key, function);
+        ((WritableRegistry<SlotDisplay.Type<? extends SlotDisplay>>) BuiltInRegistries.SLOT_DISPLAY_TYPE)
                 .register(ResourceKey.create(Registries.SLOT_DISPLAY_TYPE.location(), key), type);
+        return type;
     }
 }

@@ -1,22 +1,23 @@
 package net.momirealms.craftengine.bukkit.block;
 
 import io.papermc.paper.event.block.BlockBreakBlockEvent;
-import io.papermc.paper.event.player.PlayerArmSwingEvent;
-import io.papermc.paper.event.player.PlayerInventorySlotChangeEvent;
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
+import net.kyori.adventure.text.Component;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
+import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockBreakEvent;
-import net.momirealms.craftengine.bukkit.block.entity.BedBlockEntity;
-import net.momirealms.craftengine.bukkit.block.entity.renderer.DynamicPlayerRenderer;
+import net.momirealms.craftengine.bukkit.loot.BlockLootContext;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.BukkitExistingBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.item.behavior.ItemBehavior;
-import net.momirealms.craftengine.core.loot.LootTable;
+import net.momirealms.craftengine.core.item.ItemDefinition;
+import net.momirealms.craftengine.core.item.customdata.BlockDebugStickData;
+import net.momirealms.craftengine.core.loot.Loot;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.context.ContextHolder;
 import net.momirealms.craftengine.core.plugin.context.EventTrigger;
@@ -26,11 +27,13 @@ import net.momirealms.craftengine.core.sound.SoundData;
 import net.momirealms.craftengine.core.sound.SoundSource;
 import net.momirealms.craftengine.core.util.Cancellable;
 import net.momirealms.craftengine.core.util.ItemUtils;
+import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.CraftWorldProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.DirectionProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSystemChatPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerChunkCacheProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.sounds.SoundEventProxy;
@@ -47,19 +50,25 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.world.GenericGameEvent;
 import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.Optional;
 
+import static net.momirealms.craftengine.core.block.UpdateFlags.UPDATE_CLIENTS;
+import static net.momirealms.craftengine.core.block.UpdateFlags.UPDATE_KNOWN_SHAPE;
+
 public final class BlockEventListener implements Listener {
+    private static final String DEBUG_STICK_TAG = "craftengine:debug_stick_state";
     private final BukkitCraftEngine plugin;
     private final BukkitBlockManager manager;
 
@@ -72,7 +81,7 @@ public final class BlockEventListener implements Listener {
     public void onPlayerAttack(EntityDamageByEntityEvent event) {
         if (!VersionHelper.isOrAbove1_20_5()) {
             if (event.getDamager() instanceof Player player) {
-                BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
+                BukkitServerPlayer serverPlayer = BukkitAdaptor.adapt(player);
                 if (serverPlayer == null) return;
                 serverPlayer.setClientSideCanBreakBlock(true);
             }
@@ -82,7 +91,7 @@ public final class BlockEventListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onPlaceBlock(BlockPlaceEvent event) {
         Player player = event.getPlayer();
-        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
+        BukkitServerPlayer serverPlayer = BukkitAdaptor.adapt(player);
         if (serverPlayer == null) return;
         // send swing if player is clicking a replaceable block
         if (serverPlayer.shouldResendSwing()) {
@@ -122,34 +131,32 @@ public final class BlockEventListener implements Listener {
         int stateId = BlockStateUtils.blockStateToId(blockState);
         Player player = event.getPlayer();
         Location location = block.getLocation();
-        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
+        BukkitServerPlayer serverPlayer = BukkitAdaptor.adapt(player);
         if (serverPlayer == null) return;
         serverPlayer.updateLastSuccessBreakTick();
-        net.momirealms.craftengine.core.world.World world = BukkitAdaptors.adapt(player.getWorld());
+        net.momirealms.craftengine.core.world.World world = BukkitAdaptor.adapt(player.getWorld());
         BlockPos blockPos = LocationUtils.toBlockPos(location);
         WorldPosition position = new WorldPosition(world, location.getBlockX() + 0.5, location.getBlockY() + 0.5, location.getBlockZ() + 0.5);
-        Item<ItemStack> itemInHand = serverPlayer.getItemInHand(InteractionHand.MAIN_HAND);
+        Item itemInHand = serverPlayer.getItemInHand(InteractionHand.MAIN_HAND);
 
         if (!event.isCancelled() && !ItemUtils.isEmpty(itemInHand)) {
-            Optional<CustomItem<ItemStack>> optionalCustomItem = itemInHand.getCustomItem();
+            Optional<ItemDefinition> optionalCustomItem = itemInHand.getDefinition();
             if (optionalCustomItem.isPresent()) {
-                CustomItem<ItemStack> customItem = optionalCustomItem.get();
+                ItemDefinition itemDefinition = optionalCustomItem.get();
                 Cancellable cancellable = Cancellable.of(event::isCancelled, event::setCancelled);
-                customItem.execute(
+                itemDefinition.execute(
                         PlayerOptionalContext.of(serverPlayer, ContextHolder.builder()
                             .withParameter(DirectContextParameters.BLOCK, new BukkitExistingBlock(block))
                             .withParameter(DirectContextParameters.POSITION, position)
                             .withParameter(DirectContextParameters.PLAYER, serverPlayer)
                             .withParameter(DirectContextParameters.EVENT, cancellable)
-                            .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, itemInHand)
+                            .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, itemInHand.isEmpty() ? null : itemInHand)
                         ), EventTrigger.BREAK
                 );
                 if (cancellable.isCancelled()) {
                     return;
                 }
-                for (ItemBehavior behavior : customItem.behaviors()) {
-                    behavior.breakBlock(world, serverPlayer, blockPos);
-                }
+                itemDefinition.behavior().onBreakBlock(world, serverPlayer, blockPos);
             }
         }
 
@@ -182,7 +189,7 @@ public final class BlockEventListener implements Listener {
                             .withParameter(DirectContextParameters.CUSTOM_BLOCK_STATE, state)
                             .withParameter(DirectContextParameters.EVENT, cancellable)
                             .withParameter(DirectContextParameters.POSITION, position)
-                            .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, ItemUtils.isEmpty(itemInHand) ? null : itemInHand)
+                            .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, itemInHand.isEmpty() ? null : itemInHand)
                     );
                     state.owner().value().execute(context, EventTrigger.BREAK);
                     if (cancellable.isCancelled()) {
@@ -203,7 +210,7 @@ public final class BlockEventListener implements Listener {
         } else {
             // override vanilla block loots
             if (!event.isCancelled() && player.getGameMode() != GameMode.CREATIVE) {
-                this.plugin.vanillaLootManager().getBlockLoot(stateId).ifPresent(it -> {
+                this.plugin.lootManager().getBlockLoot(stateId).ifPresent(it -> {
                     if (!event.isDropItems()) {
                         return;
                     }
@@ -216,8 +223,9 @@ public final class BlockEventListener implements Listener {
                             .withParameter(DirectContextParameters.POSITION, position)
                             .withParameter(DirectContextParameters.PLAYER, serverPlayer)
                             .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, ItemUtils.isEmpty(itemInHand) ? null : itemInHand).build();
-                    for (LootTable<?> lootTable : it.lootTables()) {
-                        for (Item<?> item : lootTable.getRandomItems(lootContext, world, serverPlayer)) {
+                    BlockLootContext blockLootContext = new BlockLootContext(world, serverPlayer, ((float) serverPlayer.luck()), lootContext, BukkitAdaptor.adapt(block), itemInHand, serverPlayer.serverPlayer());
+                    for (Loot loot : it.loots()) {
+                        for (Item item : loot.getRandomItems(blockLootContext)) {
                             world.dropItemNaturally(position, item);
                         }
                     }
@@ -243,19 +251,21 @@ public final class BlockEventListener implements Listener {
         Object blockState = BlockGetterProxy.INSTANCE.getBlockState(CraftWorldProxy.INSTANCE.getWorld(block.getWorld()), LocationUtils.toBlockPos(block.getX(), block.getY(), block.getZ()));
         if (BlockStateUtils.isVanillaBlock(blockState)) {
             // override vanilla block loots
-            this.plugin.vanillaLootManager().getBlockLoot(BlockStateUtils.blockStateToId(blockState)).ifPresent(it -> {
+            this.plugin.lootManager().getBlockLoot(BlockStateUtils.blockStateToId(blockState)).ifPresent(it -> {
                 if (it.override()) {
                     event.getDrops().clear();
                     event.setExpToDrop(0);
                 }
                 Location location = block.getLocation();
-                net.momirealms.craftengine.core.world.World world = BukkitAdaptors.adapt(location.getWorld());
+                net.momirealms.craftengine.core.world.World world = BukkitAdaptor.adapt(location.getWorld());
                 WorldPosition position = new WorldPosition(world, location.getBlockX() + 0.5, location.getBlockY() + 0.5, location.getBlockZ() + 0.5);
-                ContextHolder.Builder builder = ContextHolder.builder()
+                ContextHolder contextHolder = ContextHolder.builder()
                         .withParameter(DirectContextParameters.POSITION, position)
-                        .withParameter(DirectContextParameters.BLOCK, new BukkitExistingBlock(block));
-                for (LootTable<?> lootTable : it.lootTables()) {
-                    for (Item<?> item : lootTable.getRandomItems(builder.build(), world, null)) {
+                        .withParameter(DirectContextParameters.BLOCK, new BukkitExistingBlock(block))
+                        .build();
+                BlockLootContext blockLootContext = new BlockLootContext(world, null, 1.0f, contextHolder, BukkitAdaptor.adapt(block), null, null);
+                for (Loot loot : it.loots()) {
+                    for (Item item : loot.getRandomItems(blockLootContext)) {
                         world.dropItemNaturally(position, item);
                     }
                 }
@@ -278,9 +288,9 @@ public final class BlockEventListener implements Listener {
             Location location = player.getLocation();
             ImmutableBlockState state = optionalCustomState.get();
             Cancellable cancellable = Cancellable.of(event::isCancelled, event::setCancelled);
-            state.owner().value().execute(PlayerOptionalContext.of(BukkitAdaptors.adapt(player), ContextHolder.builder()
+            state.owner().value().execute(PlayerOptionalContext.of(BukkitAdaptor.adapt(player), ContextHolder.builder()
                     .withParameter(DirectContextParameters.EVENT, cancellable)
-                    .withParameter(DirectContextParameters.POSITION, new WorldPosition(BukkitAdaptors.adapt(event.getWorld()), LocationUtils.toVec3d(location)))
+                    .withParameter(DirectContextParameters.POSITION, new WorldPosition(BukkitAdaptor.adapt(event.getWorld()), LocationUtils.toVec3d(location)))
                     .withParameter(DirectContextParameters.BLOCK, new BukkitExistingBlock(block))
                     .withParameter(DirectContextParameters.CUSTOM_BLOCK_STATE, state)
             ), EventTrigger.STEP);
@@ -350,41 +360,74 @@ public final class BlockEventListener implements Listener {
         }
     }
 
-    // 床方块实体辅助监听器
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerInventorySlotChange(PlayerInventorySlotChangeEvent event) {
-        int slot = event.getSlot();
-        if (slot != 40 && slot != 39 && slot != 38 && slot != 37 && slot != 36) return; // 副手和装备栏
-        Player player = event.getPlayer();
-        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
-        if (serverPlayer == null) return;
-        BedBlockEntity bed = serverPlayer.bedBlockEntity();
-        if (bed == null) return;
-        DynamicPlayerRenderer renderer = bed.renderer();
-        if (renderer == null) return;
-        renderer.updateEquipment(serverPlayer);
-        player.updateInventory();
+    @EventHandler(ignoreCancelled = true)
+    public void onUseDebugStick(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK) return;
+        Block clickedBlock = event.getClickedBlock();
+        if (clickedBlock == null) return;
+        Player bukkitPlayer = event.getPlayer();
+        BukkitServerPlayer player = BukkitAdaptor.adapt(bukkitPlayer);
+        if (player == null) return;
+        Item itemInHand = player.getItemInHand(event.getHand() == EquipmentSlot.HAND ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND);
+        if (!BukkitItemUtils.isDebugStick(itemInHand)) return;
+        if (!(player.canInstabuild() && player.hasPermission("minecraft.debugstick")) && !player.hasPermission("minecraft.debugstick.always")) {
+            return;
+        }
+        if (event.getHand() == EquipmentSlot.OFF_HAND) {
+            int currentTicks = player.gameTicks();
+            if (!player.updateLastSuccessfulInteractionTick(currentTicks)) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        Object blockState = BlockGetterProxy.INSTANCE.getBlockState(CraftWorldProxy.INSTANCE.getWorld(clickedBlock.getWorld()), LocationUtils.toBlockPos(clickedBlock.getX(), clickedBlock.getY(), clickedBlock.getZ()));
+        BlockStateUtils.getOptionalCustomBlockState(blockState).ifPresent(customState -> {
+            event.setCancelled(true);
+            boolean update = event.getAction() == Action.RIGHT_CLICK_BLOCK;
+            BlockDefinition block = customState.owner().value();
+            Collection<Property<?>> properties = block.properties();
+            if (properties.isEmpty()) {
+                Object systemChatPacket = ClientboundSystemChatPacketProxy.INSTANCE.newInstance(
+                        ComponentUtils.adventureToMinecraft(Component.translatable("item.minecraft.debug_stick.empty").arguments(Component.text(block.id().asString()))), true);
+                player.sendPacket(systemChatPacket, false);
+            } else {
+                BlockDebugStickData debugStickData = Optional.ofNullable(itemInHand.getCustomData(BlockDebugStickData.class, DEBUG_STICK_TAG, "block")).orElseGet(BlockDebugStickData::new);
+                Property<?> currentProperty = debugStickData.getProperty(block);
+                if (update) {
+                    ImmutableBlockState nextState = cycleState(customState, currentProperty, player.isSecondaryUseActive());
+                    CraftEngineBlocks.place(clickedBlock.getLocation(), nextState, UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE, false);
+                    Object systemChatPacket = ClientboundSystemChatPacketProxy.INSTANCE.newInstance(
+                            ComponentUtils.adventureToMinecraft(Component.translatable("item.minecraft.debug_stick.update")
+                                    .arguments(
+                                            Component.text(currentProperty.name()),
+                                            Component.text(getNameHelper(nextState, currentProperty))
+                                    )), true);
+                    player.sendPacket(systemChatPacket, false);
+                } else {
+                    currentProperty = getRelative(properties, currentProperty, player.isSecondaryUseActive());
+                    debugStickData.setProperty(block, currentProperty);
+                    itemInHand.setCustomData(debugStickData, DEBUG_STICK_TAG, "block");
+                    Object systemChatPacket = ClientboundSystemChatPacketProxy.INSTANCE.newInstance(
+                            ComponentUtils.adventureToMinecraft(Component.translatable("item.minecraft.debug_stick.select")
+                                    .arguments(
+                                            Component.text(currentProperty.name()),
+                                            Component.text(getNameHelper(customState, currentProperty))
+                                    )), true);
+                    player.sendPacket(systemChatPacket, false);
+                }
+            }
+        });
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
-        Player player = event.getPlayer();
-        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
-        if (serverPlayer == null) return;
-        BedBlockEntity bed = serverPlayer.bedBlockEntity();
-        if (bed == null) return;
-        DynamicPlayerRenderer renderer = bed.renderer();
-        if (renderer == null) return;
-        renderer.updateEquipment(serverPlayer, event.getNewSlot());
-        player.updateInventory();
+    private static <T extends Comparable<T>> ImmutableBlockState cycleState(ImmutableBlockState state, Property<T> property, boolean inverse) {
+        return state.with(property, getRelative(property.possibleValues(), state.get(property), inverse));
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerArmSwing(PlayerArmSwingEvent event) {
-        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(event.getPlayer());
-        if (serverPlayer == null) return;
-        BedBlockEntity bed = serverPlayer.bedBlockEntity();
-        if (bed == null) return;
-        bed.playAnimation(event.getHand() == EquipmentSlot.HAND ? 0 : 3);
+    private static <T> T getRelative(Iterable<T> elements, @Nullable T current, boolean inverse) {
+        return inverse ? MiscUtils.findPreviousInIterable(elements, current) : MiscUtils.findNextInIterable(elements, current);
+    }
+
+    private static <T extends Comparable<T>> String getNameHelper(ImmutableBlockState state, Property<T> property) {
+        return property.valueName(state.get(property));
     }
 }

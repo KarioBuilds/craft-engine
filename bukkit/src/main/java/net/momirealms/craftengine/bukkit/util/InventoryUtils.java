@@ -1,6 +1,6 @@
 package net.momirealms.craftengine.bukkit.util;
 
-import net.momirealms.craftengine.bukkit.nms.StorageContainer;
+import net.momirealms.craftengine.bukkit.nms.DelegatingContainer;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import org.bukkit.entity.Player;
@@ -10,7 +10,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
 public final class InventoryUtils {
-
     private InventoryUtils() {}
 
     public static Player getPlayerFromInventoryEvent(InventoryEvent event) {
@@ -58,6 +57,6 @@ public final class InventoryUtils {
         if (!CraftInventoryProxy.CLASS.isInstance(inventory)) return false;
         Object container = CraftInventoryProxy.INSTANCE.getInventory(inventory);
         if (container == null) return false;
-        return container instanceof StorageContainer;
+        return container instanceof DelegatingContainer;
     }
 }

@@ -1,6 +1,6 @@
 package net.momirealms.craftengine.bukkit.util;
 
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
@@ -51,9 +51,7 @@ public final class EntityUtils {
         }
     }
 
-    public static Vec3d getPassengerRidingPosition(Entity vehicle, Entity passenger) {
-        Object nmsVehicle = CraftEntityProxy.INSTANCE.getEntity(vehicle);
-        Object nmsPassenger = CraftEntityProxy.INSTANCE.getEntity(passenger);
+    public static Vec3d getPassengerRidingPosition(Object nmsVehicle, Object nmsPassenger) {
         if (VersionHelper.isOrAbove1_20_5()) {
             Vec3d passengerRidingPosition = LocationUtils.fromVec(EntityProxy.INSTANCE.getPassengerRidingPosition(nmsVehicle, nmsPassenger));
             Vec3d vehicleAttachmentPoint = LocationUtils.fromVec(EntityProxy.INSTANCE.getVehicleAttachmentPoint(nmsVehicle, nmsPassenger));
@@ -95,7 +93,7 @@ public final class EntityUtils {
             double x = location.getX() + direction.x;
             double y = location.getY();
             double z = location.getZ() + direction.z;
-            Object serverLevel = BukkitAdaptors.adapt(player.getWorld()).serverWorld();
+            Object serverLevel = BukkitAdaptor.adapt(player.getWorld()).minecraftWorld();
             Object serverPlayer = CraftEntityProxy.INSTANCE.getEntity(player);
             for (Object pose : List.of(PoseProxy.STANDING, PoseProxy.CROUCHING, PoseProxy.SWIMMING)) {
                 BlockPos pos = new BlockPos(MiscUtils.floor(x), MiscUtils.floor(y), MiscUtils.floor(z));

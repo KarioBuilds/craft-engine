@@ -3,16 +3,17 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.*;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
-import net.momirealms.craftengine.core.block.properties.BooleanProperty;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.sound.SoundData;
-import net.momirealms.craftengine.core.util.*;
+import net.momirealms.craftengine.core.util.Direction;
+import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import net.momirealms.craftengine.proxy.minecraft.core.BlockPosProxy;
@@ -32,25 +33,23 @@ import org.bukkit.Location;
 import org.bukkit.World;
 
 import javax.annotation.Nullable;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 
-public class ButtonBlockBehavior extends BukkitBlockBehavior {
+public final class ButtonBlockBehavior extends BukkitBlockBehavior {
     public static final BlockBehaviorFactory<ButtonBlockBehavior> FACTORY = new Factory();
-    private final BooleanProperty poweredProperty;
-    private final int ticksToStayPressed;
-    private final boolean canButtonBeActivatedByArrows;
-    private final SoundData buttonClickOnSound;
-    private final SoundData buttonClickOffSound;
+    public final Property<Boolean> poweredProperty;
+    public final int ticksToStayPressed;
+    public final boolean canButtonBeActivatedByArrows;
+    public final SoundData buttonClickOnSound;
+    public final SoundData buttonClickOffSound;
 
-    public ButtonBlockBehavior(CustomBlock customBlock,
-                               BooleanProperty powered,
-                               int ticksToStayPressed,
-                               boolean canButtonBeActivatedByArrows,
-                               SoundData buttonClickOnSound,
-                               SoundData buttonClickOffSound) {
-        super(customBlock);
+    private ButtonBlockBehavior(BlockDefinition blockDefinition,
+                                Property<Boolean> powered,
+                                int ticksToStayPressed,
+                                boolean canButtonBeActivatedByArrows,
+                                SoundData buttonClickOnSound,
+                                SoundData buttonClickOffSound) {
+        super(blockDefinition);
         this.poweredProperty = powered;
         this.ticksToStayPressed = ticksToStayPressed;
         this.canButtonBeActivatedByArrows = canButtonBeActivatedByArrows;
@@ -70,8 +69,8 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
             }
         }
         if (!state.get(this.poweredProperty)) {
-            press(BlockStateUtils.getBlockOwner(state.customBlockState().literalObject()),
-                    state, world.serverWorld(), LocationUtils.toBlockPos(pos),
+            press(BlockStateUtils.getBlockOwner(state.customBlockState().minecraftState()),
+                    state, world.minecraftWorld(), LocationUtils.toBlockPos(pos),
                     player != null ? player.serverPlayer() : null);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
@@ -79,7 +78,7 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void onExplosionHit(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void preExplosionHit(Object thisBlock, Object[] args) {
         ImmutableBlockState blockState = BlockStateUtils.getOptionalCustomBlockState(args[0]).orElse(null);
         if (blockState == null) return;
         if (ExplosionProxy.INSTANCE.canTriggerBlocks(args[3]) && !blockState.get(this.poweredProperty)) {
@@ -88,7 +87,7 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void affectNeighborsAfterRemoval(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void affectNeighborsAfterRemoval(Object thisBlock, Object[] args) {
         ImmutableBlockState blockState = BlockStateUtils.getOptionalCustomBlockState(args[0]).orElse(null);
         if (blockState == null) return;
         if (!(boolean) args[args.length - 1] && blockState.get(this.poweredProperty)) {
@@ -97,14 +96,14 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public int getSignal(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public int getSignal(Object thisBlock, Object[] args) {
         ImmutableBlockState blockState = BlockStateUtils.getOptionalCustomBlockState(args[0]).orElse(null);
         if (blockState == null) return 0;
         return blockState.get(this.poweredProperty) ? 15 : 0;
     }
 
     @Override
-    public int getDirectSignal(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public int getDirectSignal(Object thisBlock, Object[] args) {
         ImmutableBlockState blockState = BlockStateUtils.getOptionalCustomBlockState(args[0]).orElse(null);
         if (blockState == null) return 0;
         return blockState.get(this.poweredProperty)
@@ -113,12 +112,12 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public boolean isSignalSource(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public boolean isSignalSource(Object thisBlock, Object[] args) {
         return true;
     }
 
     @Override
-    public void tick(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void tick(Object thisBlock, Object[] args) {
         Object state = args[0];
         Object level = args[1];
         Object pos = args[2];
@@ -130,7 +129,7 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void entityInside(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void entityInside(Object thisBlock, Object[] args) {
         Object state = args[0];
         Object level = args[1];
         Object pos = args[2];
@@ -152,7 +151,7 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
         if (blockState == null) return;
         boolean poweredValue = blockState.get(this.poweredProperty);
         if (on != poweredValue) {
-            LevelWriterProxy.INSTANCE.setBlock(level, pos, blockState.with(this.poweredProperty, on).customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
+            LevelWriterProxy.INSTANCE.setBlock(level, pos, blockState.with(this.poweredProperty, on).customBlockState().minecraftState(), UpdateFlags.UPDATE_ALL);
             updateNeighbours(thisBlock, blockState, level, pos);
             playSound(level, pos, on);
             if (VersionHelper.isOrAbove1_20_5()) {
@@ -161,7 +160,6 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
                 LevelAccessorProxy.INSTANCE.gameEvent$1(level, arrow, on ? GameEventProxy.BLOCK_ACTIVATE : GameEventProxy.BLOCK_DEACTIVATE, pos);
             }
         }
-
         if (on) {
             LevelUtils.scheduleBlockTick(level, pos, thisBlock, this.ticksToStayPressed);
         }
@@ -174,11 +172,11 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
         Object nmsDirection = DirectionUtils.toNMSDirection(opposite);
         if (VersionHelper.isOrAbove1_21_2()) {
             @SuppressWarnings("unchecked")
-            Property<HorizontalDirection> facing = (Property<HorizontalDirection>) state.owner().value().getProperty("facing");
+            Property<Direction> facing = (Property<Direction>) state.owner().value().getProperty("facing");
             Object orientation = null;
             if (facing != null) {
                 orientation = ExperimentalRedstoneUtilsProxy.INSTANCE.initialOrientation(
-                        level, nmsDirection, opposite.axis().isHorizontal() ? DirectionProxy.UP : DirectionUtils.toNMSDirection(state.get(facing).toDirection())
+                        level, nmsDirection, opposite.axis().isHorizontal() ? DirectionProxy.UP : DirectionUtils.toNMSDirection(state.get(facing))
                 );
             }
             LevelProxy.INSTANCE.updateNeighborsAt(level, pos, thisBlock, orientation);
@@ -205,7 +203,7 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     private void press(Object thisBlock, ImmutableBlockState state, Object level, Object pos, @Nullable Object player) {
-        LevelWriterProxy.INSTANCE.setBlock(level, pos, state.with(this.poweredProperty, true).customBlockState().literalObject(), UpdateFlags.UPDATE_ALL);
+        LevelWriterProxy.INSTANCE.setBlock(level, pos, state.with(this.poweredProperty, true).customBlockState().minecraftState(), UpdateFlags.UPDATE_ALL);
         this.updateNeighbours(thisBlock, state, level, pos);
         LevelUtils.scheduleBlockTick(level, pos, thisBlock, this.ticksToStayPressed);
         playSound(level, pos, true);
@@ -217,21 +215,27 @@ public class ButtonBlockBehavior extends BukkitBlockBehavior {
     }
 
     private static class Factory implements BlockBehaviorFactory<ButtonBlockBehavior> {
+        private static final String[] TICKS_TO_STAY_PRESSED = new String[] {"ticks_to_stay_pressed", "ticks-to-stay-pressed"};
+        private static final String[] CAN_BE_ACTIVATED_BY_ARROW = new String[] {"can_be_activated_by_arrows", "can-be-activated-by-arrows"};
 
         @SuppressWarnings("DuplicatedCode")
         @Override
-        public ButtonBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
-            BooleanProperty powered = (BooleanProperty) ResourceConfigUtils.requireNonNullOrThrow(block.getProperty("powered"), "warning.config.block.behavior.button.missing_powered");
-            int ticksToStayPressed = ResourceConfigUtils.getAsInt(arguments.getOrDefault("ticks-to-stay-pressed", 30), "ticks-to-stay-pressed");
-            boolean canButtonBeActivatedByArrows = ResourceConfigUtils.getAsBoolean(arguments.getOrDefault("can-be-activated-by-arrows", true), "can-be-activated-by-arrows");
-            Map<String, Object> sounds = MiscUtils.castToMap(arguments.get("sounds"), true);
+        public ButtonBlockBehavior create(BlockDefinition block, ConfigSection section) {
+            ConfigSection soundSection = section.getSection("sounds");
             SoundData buttonClickOnSound = null;
             SoundData buttonClickOffSound = null;
-            if (sounds != null) {
-                buttonClickOnSound = Optional.ofNullable(sounds.get("on")).map(obj -> SoundData.create(obj, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.ranged(0.9f, 1f))).orElse(null);
-                buttonClickOffSound = Optional.ofNullable(sounds.get("off")).map(obj -> SoundData.create(obj, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.ranged(0.9f, 1f))).orElse(null);
+            if (soundSection != null) {
+                buttonClickOnSound = soundSection.getValue("on", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
+                buttonClickOffSound = soundSection.getValue("off", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
             }
-            return new ButtonBlockBehavior(block, powered, ticksToStayPressed, canButtonBeActivatedByArrows, buttonClickOnSound, buttonClickOffSound);
+            return new ButtonBlockBehavior(
+                    block,
+                    BlockBehaviorFactory.getProperty(section.path(), block, "powered", Boolean.class),
+                    section.getInt(TICKS_TO_STAY_PRESSED, 30),
+                    section.getBoolean(CAN_BE_ACTIVATED_BY_ARROW, true),
+                    buttonClickOnSound,
+                    buttonClickOffSound
+            );
         }
     }
 }

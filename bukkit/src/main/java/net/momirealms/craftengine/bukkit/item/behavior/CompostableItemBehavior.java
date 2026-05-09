@@ -10,8 +10,8 @@ import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.behavior.ItemBehavior;
 import net.momirealms.craftengine.core.item.behavior.ItemBehaviorFactory;
 import net.momirealms.craftengine.core.pack.Pack;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.core.util.ResourceConfigUtils;
 import net.momirealms.craftengine.core.util.random.RandomUtils;
 import net.momirealms.craftengine.core.world.WorldEvents;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
@@ -25,7 +25,6 @@ import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.util.Vector;
 
 import java.nio.file.Path;
-import java.util.Map;
 
 public final class CompostableItemBehavior extends ItemBehavior {
     public static final ItemBehaviorFactory<CompostableItemBehavior> FACTORY = new Factory();
@@ -66,7 +65,7 @@ public final class CompostableItemBehavior extends ItemBehavior {
         context.getLevel().levelEvent(WorldEvents.COMPOSTER_COMPOSTS, context.getClickedPos(), willRaise ? 1 : 0);
         ((World) context.getLevel().platformWorld()).sendGameEvent(player != null ? (Entity) player.platformPlayer() : null, GameEvent.BLOCK_CHANGE, new Vector(block.x() + 0.5, block.y() + 0.5, block.z() + 0.5));
         if (currentLevel + 1 == 7) {
-            LevelUtils.scheduleBlockTick(context.getLevel().serverWorld(), LocationUtils.toBlockPos(context.getClickedPos()), blockOwner, 20);
+            LevelUtils.scheduleBlockTick(context.getLevel().minecraftWorld(), LocationUtils.toBlockPos(context.getClickedPos()), blockOwner, 20);
         }
         if (player != null) {
             if (!player.canInstabuild()) {
@@ -79,9 +78,8 @@ public final class CompostableItemBehavior extends ItemBehavior {
 
     private static class Factory implements ItemBehaviorFactory<CompostableItemBehavior> {
         @Override
-        public CompostableItemBehavior create(Pack pack, Path path, String node, Key key, Map<String, Object> arguments) {
-            double chance = ResourceConfigUtils.getAsDouble(arguments.getOrDefault("chance", 0.55), "chance");
-            return new CompostableItemBehavior(chance);
+        public CompostableItemBehavior create(Pack pack, Path path, Key key, ConfigSection section) {
+            return new CompostableItemBehavior(section.getDouble("chance", 0.55));
         }
     }
 }

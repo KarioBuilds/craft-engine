@@ -3,15 +3,14 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.EventUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.UpdateFlags;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.parser.BlockStateParser;
-import net.momirealms.craftengine.core.plugin.CraftEngine;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.LazyReference;
-import net.momirealms.craftengine.core.util.ResourceConfigUtils;
 import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.block.CraftBlockStateProxy;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.block.CraftBlockStatesProxy;
@@ -30,50 +29,42 @@ import org.bukkit.block.BlockState;
 import org.bukkit.event.block.BlockFormEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
-import java.util.concurrent.Callable;
-
-public class ConcretePowderBlockBehavior extends BukkitBlockBehavior {
+public final class ConcretePowderBlockBehavior extends BukkitBlockBehavior implements BukkitFallableBlock {
     public static final BlockBehaviorFactory<ConcretePowderBlockBehavior> FACTORY = new Factory();
-    private final LazyReference<@Nullable ImmutableBlockState> targetBlock;
+    public final LazyReference<@Nullable ImmutableBlockState> targetBlock;
 
-    public ConcretePowderBlockBehavior(CustomBlock block, String targetBlock) {
+    private ConcretePowderBlockBehavior(BlockDefinition block, String targetBlock) {
         super(block);
         this.targetBlock = LazyReference.lazyReference(() -> BlockStateParser.deserialize(targetBlock));
     }
 
     public Object getDefaultBlockState() {
         ImmutableBlockState state = this.targetBlock.get();
-        return state != null ? state.customBlockState().literalObject() : BlocksProxy.STONE$defaultState;
+        return state != null ? state.customBlockState().minecraftState() : BlocksProxy.STONE$defaultState;
     }
 
     @SuppressWarnings("UnstableApiUsage")
     @Override
     public ImmutableBlockState updateStateForPlacement(BlockPlaceContext context, ImmutableBlockState state) {
-        Object level = context.getLevel().serverWorld();
+        Object level = context.getLevel().minecraftWorld();
         Object blockPos = LocationUtils.toBlockPos(context.getClickedPos());
-        try {
-            Object previousState = BlockGetterProxy.INSTANCE.getBlockState(level, blockPos);
-            if (!shouldSolidify(level, blockPos, previousState)) {
-                return super.updateStateForPlacement(context, state);
+        Object previousState = BlockGetterProxy.INSTANCE.getBlockState(level, blockPos);
+        if (!shouldSolidify(level, blockPos, previousState)) {
+            return super.updateStateForPlacement(context, state);
+        } else {
+            BlockState craftBlockState = (BlockState) CraftBlockStatesProxy.INSTANCE.getBlockState(level, blockPos);
+            craftBlockState.setBlockData(BlockStateUtils.fromBlockData(getDefaultBlockState()));
+            BlockFormEvent event = new BlockFormEvent(craftBlockState.getBlock(), craftBlockState);
+            if (!EventUtils.fireAndCheckCancel(event)) {
+                return this.targetBlock.get();
             } else {
-                BlockState craftBlockState = (BlockState) CraftBlockStatesProxy.INSTANCE.getBlockState(level, blockPos);
-                craftBlockState.setBlockData(BlockStateUtils.fromBlockData(getDefaultBlockState()));
-                BlockFormEvent event = new BlockFormEvent(craftBlockState.getBlock(), craftBlockState);
-                if (!EventUtils.fireAndCheckCancel(event)) {
-                    return this.targetBlock.get();
-                } else {
-                    return super.updateStateForPlacement(context, state);
-                }
+                return super.updateStateForPlacement(context, state);
             }
-        } catch (Exception e) {
-            CraftEngine.instance().logger().warn("Failed to update state for placement " + context.getClickedPos(), e);
         }
-        return super.updateStateForPlacement(context, state);
     }
 
     @Override
-    public void onLand(Object thisBlock, Object[] args) throws Exception {
+    public void onLand(Object thisBlock, Object[] args) {
         Object world = args[0];
         Object blockPos = args[1];
         Object replaceableState = args[3];
@@ -84,7 +75,7 @@ public class ConcretePowderBlockBehavior extends BukkitBlockBehavior {
 
     @SuppressWarnings("UnstableApiUsage")
     @Override
-    public Object updateShape(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public Object updateShape(Object thisBlock, Object[] args) {
         Object level = args[updateShape$level];
         Object pos = args[updateShape$blockPos];
         if (touchesLiquid(level, pos)) {
@@ -102,7 +93,7 @@ public class ConcretePowderBlockBehavior extends BukkitBlockBehavior {
         return args[0];
     }
 
-    private static boolean shouldSolidify(Object level, Object blockPos, Object blockState) throws ReflectiveOperationException {
+    private static boolean shouldSolidify(Object level, Object blockPos, Object blockState) {
         return canSolidify(blockState) || touchesLiquid(level, blockPos);
     }
 
@@ -133,11 +124,14 @@ public class ConcretePowderBlockBehavior extends BukkitBlockBehavior {
     }
 
     private static class Factory implements BlockBehaviorFactory<ConcretePowderBlockBehavior> {
+        private static final String[] SOLID_BLOCK = new String[] {"solid_block", "solid-block"};
 
         @Override
-        public ConcretePowderBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
-            String solidBlock = ResourceConfigUtils.requireNonEmptyStringOrThrow(arguments.get("solid-block"), "warning.config.block.behavior.concrete.missing_solid");
-            return new ConcretePowderBlockBehavior(block, solidBlock);
+        public ConcretePowderBlockBehavior create(BlockDefinition block, ConfigSection section) {
+            return new ConcretePowderBlockBehavior(
+                    block,
+                    section.getNonNullString(SOLID_BLOCK)
+            );
         }
     }
 }

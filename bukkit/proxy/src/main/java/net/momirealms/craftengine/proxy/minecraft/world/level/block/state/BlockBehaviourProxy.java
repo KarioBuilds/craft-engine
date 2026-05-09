@@ -2,6 +2,7 @@ package net.momirealms.craftengine.proxy.minecraft.world.level.block.state;
 
 import net.momirealms.craftengine.proxy.minecraft.core.BlockPosProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.DirectionProxy;
+import net.momirealms.craftengine.proxy.minecraft.core.TypedInstanceProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.tags.TagKeyProxy;
 import net.momirealms.craftengine.proxy.minecraft.util.RandomSourceProxy;
@@ -17,6 +18,7 @@ import net.momirealms.craftengine.proxy.minecraft.world.phys.shapes.CollisionCon
 import net.momirealms.sparrow.reflection.clazz.SparrowClass;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.*;
+import org.bukkit.block.data.BlockData;
 
 @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour")
 public interface BlockBehaviourProxy {
@@ -72,7 +74,7 @@ public interface BlockBehaviourProxy {
     void setDescriptionId(Object target, String descriptionId);
 
     @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase")
-    interface BlockStateBaseProxy extends StateHolderProxy {
+    interface BlockStateBaseProxy extends StateHolderProxy, TypedInstanceProxy {
         BlockStateBaseProxy INSTANCE = ASMProxyFactory.create(BlockStateBaseProxy.class);
         Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase");
 
@@ -160,10 +162,10 @@ public interface BlockBehaviourProxy {
         @FieldSetter(name = "isViewBlocking")
         void setIsViewBlocking(Object target, Object isViewBlocking);
 
-        @FieldGetter(name = "hasPostProcess")
+        @FieldGetter(name = {"postProcess", "hasPostProcess"})
         Object getHasPostProcess(Object target);
 
-        @FieldSetter(name = "hasPostProcess")
+        @FieldSetter(name = {"postProcess", "hasPostProcess"})
         void setHasPostProcess(Object target, Object hasPostProcess);
 
         @FieldGetter(name = "emissiveRendering")
@@ -220,11 +222,11 @@ public interface BlockBehaviourProxy {
         @FieldSetter(name = "propagatesSkylightDown", activeIf = "min_version=1.21.2")
         void setPropagatesSkylightDown(Object target, boolean propagatesSkylightDown);
 
-        @FieldGetter(name = "lightBlock", activeIf = "min_version=1.21.2")
-        int getLightBlock$0(Object target);
+        @FieldGetter(name = {"lightDampening", "lightBlock"}, activeIf = "min_version=1.21.2")
+        int getLightDampening$0(Object target);
 
-        @FieldSetter(name = "lightBlock", activeIf = "min_version=1.21.2")
-        void setLightBlock(Object target, int lightBlock);
+        @FieldSetter(name = {"lightDampening", "lightBlock"}, activeIf = "min_version=1.21.2")
+        void setLightDampening(Object target, int lightBlock);
 
         @FieldGetter(name = "shapeExceedsCube")
         boolean isShapeExceedsCube(Object target);
@@ -253,8 +255,8 @@ public interface BlockBehaviourProxy {
         @MethodInvoker(name = "initCache")
         void initCache(Object target);
 
-        @MethodInvoker(name = "getLightBlock", activeIf = "min_version=1.21.2")
-        int getLightBlock$1(Object target);
+        @MethodInvoker(name = {"getLightDampening", "getLightBlock"}, activeIf = "min_version=1.21.2")
+        int getLightDampening$1(Object target);
 
         @MethodInvoker(name = "getLightBlock", activeIf = "max_version=1.21.1")
         int getLightBlock(Object target, @Type(clazz = BlockGetterProxy.class) Object world, @Type(clazz = BlockPosProxy.class) Object pos);
@@ -265,7 +267,7 @@ public interface BlockBehaviourProxy {
         @MethodInvoker(name = "getSoundType")
         Object getSoundType(Object target);
 
-        @MethodInvoker(name = "is")
+        @MethodInvoker(name = "is", activeIf = "max_version=1.21.11")
         boolean is$0(Object target, @Type(clazz = BlockProxy.class) Object block);
 
         @MethodInvoker(name = "isPathfindable", activeIf = "min_version=1.20.5")
@@ -277,7 +279,7 @@ public interface BlockBehaviourProxy {
         @MethodInvoker(name = "isFaceSturdy")
         boolean isFaceSturdy(Object target, @Type(clazz = BlockGetterProxy.class) Object world, @Type(clazz = BlockPosProxy.class) Object pos, @Type(clazz = DirectionProxy.class) Object face, @Type(clazz = SupportTypeProxy.class) Object supportType);
 
-        @MethodInvoker(name = "is")
+        @MethodInvoker(name = "is", activeIf = "max_version=1.21.11")
         boolean is$1(Object target, @Type(clazz = TagKeyProxy.class) Object tag);
 
         @MethodInvoker(name = "isCollisionShapeFullBlock")
@@ -309,6 +311,12 @@ public interface BlockBehaviourProxy {
 
         @MethodInvoker(name = "updateNeighbourShapes")
         void updateNeighbourShapes(Object target, @Type(clazz = LevelAccessorProxy.class) Object world, @Type(clazz = BlockPosProxy.class) Object pos, int flags, int maxUpdateDepth);
+
+        @MethodInvoker(name = "hasBlockEntity")
+        boolean hasBlockEntity(Object target);
+
+        @MethodInvoker(name = {"asBlockData", "createCraftBlockData"})
+        BlockData asBlockData(Object target);
 
         @ReflectionProxy(name = "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase$Cache")
         interface CacheProxy {

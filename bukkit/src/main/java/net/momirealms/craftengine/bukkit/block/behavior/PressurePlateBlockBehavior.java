@@ -5,12 +5,15 @@ import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.sound.SoundData;
-import net.momirealms.craftengine.core.util.*;
+import net.momirealms.craftengine.core.util.Direction;
+import net.momirealms.craftengine.core.util.PressurePlateSensitivity;
+import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.WorldEvents;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.block.CraftBlockProxy;
@@ -35,26 +38,22 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
 import javax.annotation.Nullable;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 
-public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
+public final class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     public static final BlockBehaviorFactory<PressurePlateBlockBehavior> FACTORY = new Factory();
-    private final Property<Boolean> poweredProperty;
-    private final SoundData onSound;
-    private final SoundData offSound;
-    private final PressurePlateSensitivity pressurePlateSensitivity;
-    private final int pressedTime;
+    public final Property<Boolean> poweredProperty;
+    public final SoundData onSound;
+    public final SoundData offSound;
+    public final PressurePlateSensitivity pressurePlateSensitivity;
+    public final int pressedTime;
 
-    public PressurePlateBlockBehavior(
-            CustomBlock block,
-            Property<Boolean> poweredProperty,
-            SoundData onSound,
-            SoundData offSound,
-            PressurePlateSensitivity pressurePlateSensitivity,
-            int pressedTime
-    ) {
+    private PressurePlateBlockBehavior(BlockDefinition block,
+                                       Property<Boolean> poweredProperty,
+                                       SoundData onSound,
+                                       SoundData offSound,
+                                       PressurePlateSensitivity pressurePlateSensitivity,
+                                       int pressedTime) {
         super(block);
         this.poweredProperty = poweredProperty;
         this.onSound = onSound;
@@ -65,7 +64,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
 
     @SuppressWarnings("DuplicatedCode")
     @Override
-    public Object updateShape(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public Object updateShape(Object thisBlock, Object[] args) {
         Object state = args[0];
         Object level = args[updateShape$level];
         Object blockPos = args[updateShape$blockPos];
@@ -83,7 +82,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public boolean canSurvive(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public boolean canSurvive(Object thisBlock, Object[] args) {
         Object blockPos = LocationUtils.below(args[2]);
         Object level = args[1];
         return BlockProxy.INSTANCE.canSupportRigidBlock(level, blockPos)
@@ -91,7 +90,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void tick(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public void tick(Object thisBlock, Object[] args) {
         Object state = args[0];
         int signalForState = this.getSignalForState(state);
         if (signalForState > 0) {
@@ -101,7 +100,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
 
     @Override
     @SuppressWarnings("UnstableApiUsage")
-    public void entityInside(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void entityInside(Object thisBlock, Object[] args) {
         Entity entity = EntityProxy.INSTANCE.getBukkitEntity(args[3]);
         Block block = CraftBlockProxy.INSTANCE.at(args[1], args[2]);
         EntityInsideBlockEvent event = new EntityInsideBlockEvent(entity, block);
@@ -119,7 +118,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
         }
     }
 
-    protected int getSignalStrength(Object level, Object pos) {
+    private int getSignalStrength(Object level, Object pos) {
         Class<?> clazz = switch (this.pressurePlateSensitivity) {
             case EVERYTHING -> EntityProxy.CLASS;
             case MOBS -> LivingEntityProxy.CLASS;
@@ -134,7 +133,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     private Object setSignalForState(Object state, int strength) {
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(state);
         if (optionalCustomState.isEmpty()) return state;
-        return optionalCustomState.get().with(this.poweredProperty, strength > 0).customBlockState().literalObject();
+        return optionalCustomState.get().with(this.poweredProperty, strength > 0).customBlockState().minecraftState();
     }
 
     private void checkPressed(@Nullable Object entity, Object level, Object pos, Object state, int currentSignal, Object thisBlock) {
@@ -187,7 +186,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public void affectNeighborsAfterRemoval(Object thisBlock, Object[] args, Callable<Object> superMethod) throws Exception {
+    public void affectNeighborsAfterRemoval(Object thisBlock, Object[] args) {
         boolean flag;
         if (VersionHelper.isOrAbove1_21_5()) {
             flag = !(boolean) args[3];
@@ -198,9 +197,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
             if (this.getSignalForState(args[0]) > 0) {
                 this.updateNeighbours(args[1], args[2], thisBlock);
             }
-            if (!VersionHelper.isOrAbove1_21_5()) {
-                superMethod.call();
-            }
+            super.affectNeighborsAfterRemoval(args[0], args);
         }
     }
 
@@ -215,7 +212,7 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public int getSignal(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public int getSignal(Object thisBlock, Object[] args) {
         return this.getSignalForState(args[0]);
     }
 
@@ -225,32 +222,36 @@ public class PressurePlateBlockBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public int getDirectSignal(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public int getDirectSignal(Object thisBlock, Object[] args) {
         Direction direction = DirectionUtils.fromNMSDirection(args[3]);
         return direction == Direction.UP ? this.getSignalForState(args[0]) : 0;
     }
 
     @Override
-    public boolean isSignalSource(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public boolean isSignalSource(Object thisBlock, Object[] args) {
         return true;
     }
 
     private static class Factory implements BlockBehaviorFactory<PressurePlateBlockBehavior> {
+        private static final String[] PRESSED_TIME = new String[] {"pressed_time", "pressed-time"};
 
-        @SuppressWarnings({"unchecked", "DuplicatedCode"})
         @Override
-        public PressurePlateBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
-            Property<Boolean> powered = (Property<Boolean>) ResourceConfigUtils.requireNonNullOrThrow(block.getProperty("powered"), "warning.config.block.behavior.pressure_plate.missing_powered");
-            PressurePlateSensitivity pressurePlateSensitivity = PressurePlateSensitivity.byName(arguments.getOrDefault("sensitivity", "everything").toString());
-            int pressedTime = ResourceConfigUtils.getAsInt(arguments.getOrDefault("pressed-time", 20), "pressed-time");
-            Map<String, Object> sounds = MiscUtils.castToMap(arguments.get("sounds"), true);
+        public PressurePlateBlockBehavior create(BlockDefinition block, ConfigSection section) {
+            ConfigSection soundSection = section.getSection("sounds");
             SoundData onSound = null;
             SoundData offSound = null;
-            if (sounds != null) {
-                onSound = Optional.ofNullable(sounds.get("on")).map(obj -> SoundData.create(obj, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.ranged(0.9f, 1f))).orElse(null);
-                offSound = Optional.ofNullable(sounds.get("off")).map(obj -> SoundData.create(obj, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.ranged(0.9f, 1f))).orElse(null);
+            if (soundSection != null) {
+                onSound = soundSection.getValue("on", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
+                offSound = soundSection.getValue("off", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
             }
-            return new PressurePlateBlockBehavior(block, powered, onSound, offSound, pressurePlateSensitivity, pressedTime);
+            return new PressurePlateBlockBehavior(
+                    block,
+                    BlockBehaviorFactory.getProperty(section.path(), block, "powered", Boolean.class),
+                    onSound,
+                    offSound,
+                    section.getValue("sensitivity", it -> it.getAsEnum(PressurePlateSensitivity.class, PressurePlateSensitivity::byId), PressurePlateSensitivity.EVERYTHING),
+                    section.getInt(PRESSED_TIME, 20)
+            );
         }
     }
 }

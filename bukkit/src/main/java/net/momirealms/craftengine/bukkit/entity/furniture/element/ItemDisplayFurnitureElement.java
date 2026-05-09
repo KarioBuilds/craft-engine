@@ -2,6 +2,7 @@ package net.momirealms.craftengine.bukkit.entity.furniture.element;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.momirealms.craftengine.core.entity.furniture.Furniture;
+import net.momirealms.craftengine.core.entity.furniture.element.tint.FurnitureTintSource;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.world.Vec3d;
@@ -19,9 +20,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-public final class ItemDisplayFurnitureElement extends AbstractFurnitureElement {
+public final class ItemDisplayFurnitureElement extends AbstractConditionalFurnitureElement {
     public final ItemDisplayFurnitureElementConfig config;
     public final Furniture furniture;
+    public final FurnitureTintSource tintSource;
     public final WorldPosition position;
     public final int entityId;
     public final Object despawnPacket;
@@ -31,10 +33,11 @@ public final class ItemDisplayFurnitureElement extends AbstractFurnitureElement 
         super(config.predicate, config.hasCondition);
         this.config = config;
         this.furniture = furniture;
+        this.tintSource = config.createTintSource(furniture);
         this.entityId = EntityProxy.ENTITY_COUNTER.incrementAndGet();
         WorldPosition furniturePos = furniture.position();
         Vec3d position = Furniture.getRelativePosition(furniturePos, config.position);
-        this.position = new WorldPosition(furniturePos.world, position.x, position.y, position.z, furniturePos.xRot, furniturePos.yRot);
+        this.position = new WorldPosition(furniturePos.world, position.x, position.y, position.z, furniturePos.xRot + config.xRot, furniturePos.yRot + config.yRot);
         this.despawnPacket = ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(MiscUtils.init(new IntArrayList(), a -> a.add(entityId)));
     }
 
@@ -51,7 +54,7 @@ public final class ItemDisplayFurnitureElement extends AbstractFurnitureElement 
                         this.position.x, this.position.y, this.position.z, 0, this.position.yRot,
                         EntityTypeProxy.ITEM_DISPLAY, 0, Vec3Proxy.ZERO, 0
                 ),
-                ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(this.entityId, this.config.metadata.apply(player, this.furniture.dataAccessor.getColorSource()))
+                ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(this.entityId, this.config.metadata.apply(player, this.tintSource))
         )), false);
     }
 
@@ -62,16 +65,10 @@ public final class ItemDisplayFurnitureElement extends AbstractFurnitureElement 
 
     @Override
     public void refresh(Player player) {
-        player.sendPacket(ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(this.entityId, this.config.metadata.apply(player, this.furniture.dataAccessor.getColorSource())), false);
+        player.sendPacket(ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(this.entityId, this.config.metadata.apply(player, this.tintSource)), false);
     }
 
     @Override
-    public int[] virtualEntityIds() {
-        return new int[] {this.entityId};
-    }
-
-    @Override
-    public void collectVirtualEntityId(Consumer<Integer> collector) {
-        collector.accept(this.entityId);
+    public void gatherInteractableEntityId(Consumer<Integer> collector) {
     }
 }

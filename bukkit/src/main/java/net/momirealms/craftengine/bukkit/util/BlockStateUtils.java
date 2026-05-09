@@ -1,7 +1,11 @@
 package net.momirealms.craftengine.bukkit.util;
 
 import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
-import net.momirealms.craftengine.core.block.*;
+import net.momirealms.craftengine.core.block.BlockRegistryMirror;
+import net.momirealms.craftengine.core.block.BlockStateWrapper;
+import net.momirealms.craftengine.core.block.DelegatingBlockState;
+import net.momirealms.craftengine.core.block.ImmutableBlockState;
+import net.momirealms.craftengine.core.block.setting.BlockSettings;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.CraftWorldProxy;
@@ -16,7 +20,6 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockB
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.StateDefinitionProxy;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
-import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,12 +47,12 @@ public final class BlockStateUtils {
         return BlockRegistryMirror.byId(id);
     }
 
-    public static boolean isCorrectTool(@NotNull ImmutableBlockState state, @Nullable Item<ItemStack> itemInHand) {
+    public static boolean isCorrectTool(@NotNull ImmutableBlockState state, @Nullable Item itemInHand) {
         BlockSettings settings = state.settings();
         if (settings.requireCorrectTool()) {
             if (itemInHand == null || itemInHand.isEmpty()) return false;
             return settings.isCorrectTool(itemInHand.id()) ||
-                    (settings.respectToolComponent() && ItemStackProxy.INSTANCE.isCorrectToolForDrops(itemInHand.getLiteralObject(), state.customBlockState().literalObject()));
+                    (settings.respectToolComponent() && ItemStackProxy.INSTANCE.isCorrectToolForDrops(itemInHand.minecraftItem(), state.customBlockState().minecraftState()));
         }
         return true;
     }
@@ -61,7 +64,7 @@ public final class BlockStateUtils {
     }
 
     public static BlockData fromBlockData(Object blockState) {
-        return CraftBlockDataProxy.INSTANCE.fromData(blockState);
+        return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.asBlockData(blockState);
     }
 
     public static int blockDataToId(BlockData blockData) {

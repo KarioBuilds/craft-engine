@@ -2,23 +2,23 @@ package net.momirealms.craftengine.bukkit.block;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import net.momirealms.craftengine.bukkit.block.behavior.UnsafeCompositeBlockBehavior;
+import net.momirealms.craftengine.bukkit.block.behavior.*;
 import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.injector.BlockGenerator;
-import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
-import net.momirealms.craftengine.bukkit.plugin.network.payload.PayloadHelper;
-import net.momirealms.craftengine.bukkit.plugin.network.payload.protocol.VisualBlockStatePacket;
-import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
+import net.momirealms.craftengine.bukkit.plugin.injector.MaterialInjector;
 import net.momirealms.craftengine.bukkit.util.*;
 import net.momirealms.craftengine.core.block.*;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviors;
-import net.momirealms.craftengine.core.block.behavior.EmptyBlockBehavior;
+import net.momirealms.craftengine.core.block.behavior.RandomTickBlock;
 import net.momirealms.craftengine.core.block.parser.BlockStateParser;
-import net.momirealms.craftengine.core.loot.LootTable;
+import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.block.setting.BlockSettings;
+import net.momirealms.craftengine.core.loot.Loot;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
+import net.momirealms.craftengine.core.plugin.config.ConfigValue;
 import net.momirealms.craftengine.core.plugin.context.Context;
 import net.momirealms.craftengine.core.plugin.context.EventTrigger;
 import net.momirealms.craftengine.core.plugin.context.function.Function;
@@ -54,10 +54,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class BukkitBlockManager extends AbstractBlockManager {
     public static final Set<Object> CLIENT_SIDE_NOTE_BLOCKS = new HashSet<>(2048, 0.6f);
-    private static final Object BLOCK_POS$ZERO = LocationUtils.toBlockPos(0,0,0);
     private static final Object ALWAYS_FALSE = FastNMS.INSTANCE.createAlwaysStatePredicate(false);
     private static final Object ALWAYS_TRUE = FastNMS.INSTANCE.createAlwaysStatePredicate(true);
     private static BukkitBlockManager instance;
@@ -65,15 +65,15 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     // 事件监听器
     private final BlockEventListener blockEventListener;
     // 用于缓存string形式的方块状态到原版方块状态
-    private final Map<String, BlockStateWrapper> blockStateCache = new HashMap<>(1024);
+    private final Map<String, BlockStateWrapper> blockStateCache = new ConcurrentHashMap<>(1024);
     // 用于临时存储可燃烧自定义方块的列表
-    private final List<DelegatingBlock> burnableBlocks = new ArrayList<>();
+    private final List<DelegatingBlock> burnableBlocks = Collections.synchronizedList(new ArrayList<>(32));
     // 可燃烧的方块
     private Map<Object, Integer> igniteOdds;
     private Map<Object, Integer> burnOdds;
     // 自定义客户端侧原版方块标签
-    private Map<Integer, List<String>> clientBoundTags = Map.of();
-    private Map<Integer, List<String>> previousClientBoundTags = Map.of();
+    private Map<Integer, List<Key>> clientBoundTags = Map.of();
+    private Map<Integer, List<Key>> previousClientBoundTags = Map.of();
     // 缓存的原版方块tag包
     private List<TagUtils.TagEntry> cachedUpdateTags = List.of();
     // 被移除声音的原版方块
@@ -82,15 +82,14 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     private Set<Object> missingHitSounds = Set.of();
     private Set<Object> missingStepSounds = Set.of();
     private Set<Key> missingInteractSoundBlocks = Set.of();
-    // 缓存的VisualBlockStatePacket
-    private VisualBlockStatePacket cachedVisualBlockStatePacket;
 
     public BukkitBlockManager(BukkitCraftEngine plugin) {
         super(plugin, RegistryUtils.currentBlockRegistrySize(), Config.serverSideBlocks());
         this.plugin = plugin;
         this.blockEventListener = new BlockEventListener(plugin, this);
         this.registerServerSideCustomBlocks(Config.serverSideBlocks());
-        EmptyBlock.initialize();
+        EmptyBlockDefinition.init();
+        EmptyBlockDefinition.STATE.setBehavior(EmptyBlockBehavior.INSTANCE);
         instance = this;
     }
 
@@ -102,7 +101,7 @@ public final class BukkitBlockManager extends AbstractBlockManager {
         this.deceiveBukkitRegistry();
         this.markVanillaNoteBlocks();
         this.findViewBlockingVanillaBlocks();
-        Arrays.fill(this.immutableBlockStates, EmptyBlock.INSTANCE.defaultState());
+        Arrays.fill(this.immutableBlockStates, EmptyBlockDefinition.INSTANCE.defaultState());
         this.registerBlockStatePacketListener(); // 一定要预先初始化一次，预防id超出上限
     }
 
@@ -125,13 +124,14 @@ public final class BukkitBlockManager extends AbstractBlockManager {
             this.burnOdds.remove(block);
         }
         this.burnableBlocks.clear();
-        if (EmptyBlock.STATE != null)
-            Arrays.fill(this.immutableBlockStates, EmptyBlock.STATE);
+        if (EmptyBlockDefinition.STATE != null)
+            Arrays.fill(this.immutableBlockStates, EmptyBlockDefinition.STATE);
         for (DelegatingBlock block : this.customBlocks) {
             block.behaviorDelegate().bindValue(EmptyBlockBehavior.INSTANCE);
             block.shapeDelegate().bindValue(BukkitBlockShape.STONE);
             DelegatingBlockState state = (DelegatingBlockState) BlockProxy.INSTANCE.getDefaultBlockState(block);
             state.setBlockState(null);
+            state.setBlockOwner(null);
         }
     }
 
@@ -145,11 +145,6 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     public void delayedLoad() {
         this.registerBlockStatePacketListener();
         super.delayedLoad();
-        this.cachedVisualBlockStatePacket = VisualBlockStatePacket.create();
-        for (BukkitServerPlayer player : BukkitNetworkManager.instance().onlineUsers()) {
-            if (!player.clientModEnabled()) continue;
-            PayloadHelper.sendData(player, this.cachedVisualBlockStatePacket);
-        }
     }
 
     @Override
@@ -158,17 +153,48 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     }
 
     @Override
-    public BlockBehavior createBlockBehavior(CustomBlock customBlock, List<Map<String, Object>> behaviorConfig) {
-        if (behaviorConfig == null || behaviorConfig.isEmpty()) {
-            return new EmptyBlockBehavior(customBlock);
-        } else if (behaviorConfig.size() == 1) {
-            return BlockBehaviors.fromMap(customBlock, behaviorConfig.getFirst());
-        } else {
-            List<BlockBehavior> behaviors = new ArrayList<>();
-            for (Map<String, Object> config : behaviorConfig) {
-                behaviors.add(BlockBehaviors.fromMap(customBlock, config));
+    public BlockBehavior createFallbackBehavior(BlockDefinition definition) {
+        return new BukkitBlockBehavior(definition);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public BlockBehavior createBlockBehavior(BlockDefinition blockDefinition, ConfigValue behaviorValue) {
+        List<BlockBehavior> behaviors = new ArrayList<>(4);
+        // 硬编码旋转镜像行为
+        for (Property<?> property : blockDefinition.properties()) {
+            String propertyName = property.name();
+            var behaviorGenerator = HardcodedPropertyBlockBehavior.HARD_CODED_PROPERTY_DATA.get(propertyName);
+
+            if (behaviorGenerator != null) {
+                HardcodedPropertyBlockBehavior behavior = behaviorGenerator.apply(blockDefinition, property);
+                if (behavior != null) {
+                    behaviors.add(behavior);
+                }
             }
-            return new UnsafeCompositeBlockBehavior(customBlock, behaviors);
+        }
+        // 用户自己设置的行为
+        if (behaviorValue != null) {
+           behaviors.addAll(behaviorValue.getAsList(v -> BlockBehaviors.fromConfig(blockDefinition, v.getAsSection())));
+        }
+        // 硬编码waterlogged行为
+        Property<?> waterloggedProperty = blockDefinition.getProperty("waterlogged");
+        if (waterloggedProperty != null && waterloggedProperty.valueClass() == Boolean.class) {
+            behaviors.add(new WaterloggedBlockBehavior(blockDefinition, (Property<Boolean>) waterloggedProperty));
+        }
+        switch (behaviors.size()) {
+            case 0 -> {
+                return new BukkitBlockBehavior(blockDefinition);
+            }
+            case 1 -> {
+                return behaviors.getFirst();
+            }
+            case 2 -> {
+                return new DualBlockBehavior(blockDefinition, behaviors.get(0), behaviors.get(1));
+            }
+            default -> {
+                return new CompositeBlockBehavior(blockDefinition, behaviors);
+            }
         }
     }
 
@@ -177,7 +203,7 @@ public final class BukkitBlockManager extends AbstractBlockManager {
         // if there's no change
         if (this.clientBoundTags.equals(this.previousClientBoundTags)) return;
         List<TagUtils.TagEntry> list = new ArrayList<>();
-        for (Map.Entry<Integer, List<String>> entry : this.clientBoundTags.entrySet()) {
+        for (Map.Entry<Integer, List<Key>> entry : this.clientBoundTags.entrySet()) {
             list.add(new TagUtils.TagEntry(entry.getKey(), entry.getValue()));
         }
         this.cachedUpdateTags = list;
@@ -224,7 +250,7 @@ public final class BukkitBlockManager extends AbstractBlockManager {
 
     @Override
     public Key getBlockOwnerId(BlockStateWrapper state) {
-        return BlockStateUtils.getBlockOwnerIdFromState(state.literalObject());
+        return BlockStateUtils.getBlockOwnerIdFromState(state.minecraftState());
     }
 
     @Override
@@ -233,15 +259,16 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     }
 
     private void initFireBlock() {
-        this.igniteOdds = FireBlockProxy.INSTANCE.getIgniteOdds(BlocksProxy.FIRE);
-        this.burnOdds = FireBlockProxy.INSTANCE.getBurnOdds(BlocksProxy.FIRE);
+        this.igniteOdds = Collections.synchronizedMap(FireBlockProxy.INSTANCE.getIgniteOdds(BlocksProxy.FIRE));
+        this.burnOdds = Collections.synchronizedMap(FireBlockProxy.INSTANCE.getBurnOdds(BlocksProxy.FIRE));
     }
 
     @Override
-    protected void applyPlatformSettings(CustomBlock block, ImmutableBlockState state) {
-        DelegatingBlockState nmsState = (DelegatingBlockState) state.customBlockState().literalObject();
+    protected void applyPlatformSettings(BlockDefinition block, ImmutableBlockState state) {
+        DelegatingBlockState nmsState = (DelegatingBlockState) state.customBlockState().minecraftState();
         nmsState.setBlockState(state);
-        Object nmsVisualState = state.visualBlockState().literalObject();
+        nmsState.setBlockOwner(BlockStateUtils.getBlockOwner(block.defaultState().customBlockState().minecraftState()));
+        Object nmsVisualState = state.visualBlockState().minecraftState();
 
         BlockSettings settings = state.settings();
         try {
@@ -270,7 +297,7 @@ public final class BukkitBlockManager extends AbstractBlockManager {
 
             DelegatingBlock nmsBlock = (DelegatingBlock) BlockStateUtils.getBlockOwner(nmsState);
             ObjectHolder<BlockShape> shapeHolder = nmsBlock.shapeDelegate();
-            shapeHolder.bindValue(new BukkitBlockShape(nmsVisualState, Optional.ofNullable(state.settings().supportShapeBlockState()).map(it -> Objects.requireNonNull(createVanillaBlockState(it), "Illegal block state: " + it).literalObject()).orElse(null)));
+            shapeHolder.bindValue(new BukkitBlockShape(nmsVisualState, Optional.ofNullable(state.settings().supportShapeBlockState()).map(it -> Objects.requireNonNull(createVanillaBlockState(it), "Illegal block state: " + it).minecraftState()).orElse(null)));
             ObjectHolder<BlockBehavior> behaviorHolder = nmsBlock.behaviorDelegate();
             behaviorHolder.bindValue(state.behavior());
             if (VersionHelper.isOrAbove1_21_2()) {
@@ -292,8 +319,8 @@ public final class BukkitBlockManager extends AbstractBlockManager {
             }
 
             if (VersionHelper.isOrAbove1_21_2()) {
-                int blockLight = settings.blockLight() != -1 ? settings.blockLight() : BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getLightBlock$0(nmsVisualState);
-                BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setLightBlock(nmsState, blockLight);
+                int blockLight = settings.blockLight() != -1 ? settings.blockLight() : BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getLightDampening$0(nmsVisualState);
+                BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setLightDampening(nmsState, blockLight);
                 boolean propagatesSkylightDown = settings.propagatesSkylightDown() == Tristate.UNDEFINED ? BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isPropagatesSkylightDown(nmsVisualState) : settings.propagatesSkylightDown().asBoolean();
                 BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setPropagatesSkylightDown(nmsState, propagatesSkylightDown);
             } else {
@@ -307,7 +334,11 @@ public final class BukkitBlockManager extends AbstractBlockManager {
                 }
             }
 
-            BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setIsRandomlyTicking(nmsState, settings.isRandomlyTicking());
+            if (state.behavior() instanceof RandomTickBlock randomTickBlock) {
+                BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setIsRandomlyTicking(nmsState, randomTickBlock.canRandomlyTick(state));
+            } else {
+                BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setIsRandomlyTicking(nmsState, settings.isRandomlyTicking());
+            }
             BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.setFluidState(nmsState, settings.fluidState() ? FluidsProxy.WATER$defaultState : FluidsProxy.EMPTY$defaultState);
 
             Object holder = BukkitCraftEngine.instance().blockManager().getMinecraftBlockHolder(state.customBlockState().registryId());
@@ -331,7 +362,11 @@ public final class BukkitBlockManager extends AbstractBlockManager {
                 state.setRestoreBlockState(state.visualBlockState());
             }
             // 根据客户端的状态决定其是否阻挡视线
-            super.viewBlockingBlocks[state.customBlockState().registryId()] = canBlockView(state.visualBlockState());
+            if (settings.isRaytraceBlocking()) {
+                super.viewBlockingBlocks[state.customBlockState().registryId()] = true;
+            } else {
+                super.viewBlockingBlocks[state.customBlockState().registryId()] = canBlockView(state.visualBlockState());
+            }
         } catch (Throwable e) {
             this.plugin.logger().warn("Failed to apply platform block settings for block state " + state, e);
         }
@@ -354,15 +389,12 @@ public final class BukkitBlockManager extends AbstractBlockManager {
         // 这个会影响全局调色盘
         try {
             unfreezeRegistry();
+            boolean injectBukkitMaterial = checkInjectBukkitMaterialAvailability();
+            int length = injectBukkitMaterial ? Material.values().length : 0;
+            Material[] newMaterial = injectBukkitMaterial ? Arrays.copyOf(Material.values(), length + count) : null;
             for (int i = 0; i < count; i++) {
                 Key customBlockId = BlockManager.createCustomBlockKey(i);
-                DelegatingBlock customBlock;
-                try {
-                    customBlock = BlockGenerator.generateBlock(customBlockId);
-                } catch (Throwable t) {
-                    CraftEngine.instance().logger().warn("Failed to generate custom block " + customBlockId, t);
-                    break;
-                }
+                DelegatingBlock customBlock = BlockGenerator.generateBlock(customBlockId);
                 this.customBlocks[i] = customBlock;
                 Object identifier = KeyUtils.toIdentifier(customBlockId);
                 Object blockHolder = RegistryProxy.INSTANCE.registerForHolder$1(BuiltInRegistriesProxy.BLOCK, identifier, customBlock);
@@ -372,18 +404,32 @@ public final class BukkitBlockManager extends AbstractBlockManager {
                 DelegatingBlockState newBlockState = (DelegatingBlockState) BlockProxy.INSTANCE.getDefaultBlockState(customBlock);
                 this.customBlockStates[i] = newBlockState;
                 IdMapperProxy.INSTANCE.add(BlockProxy.BLOCK_STATE_REGISTRY, newBlockState);
+                if (injectBukkitMaterial) {
+                    newMaterial[length + i] = MaterialInjector.createMaterial(customBlockId, length + i, customBlock);
+                }
+            }
+            if (injectBukkitMaterial) {
+                MaterialInjector.resetMaterial(newMaterial);
             }
         } finally {
             freezeRegistry();
         }
     }
 
-    public List<TagUtils.TagEntry> cachedUpdateTags() {
-        return this.cachedUpdateTags;
+    private static boolean checkInjectBukkitMaterialAvailability() {
+        if (!Config.injectBukkitMaterial()) return false;
+        try {
+            MaterialInjector.check();
+            return true;
+        } catch (Throwable e) {
+            Config.setInjectBukkitMaterial(false);
+            CraftEngine.instance().logger().warn("Current environment does not support injecting Bukkit Material", e);
+            return false;
+        }
     }
 
-    public VisualBlockStatePacket cachedVisualBlockStatePacket() {
-        return this.cachedVisualBlockStatePacket;
+    public List<TagUtils.TagEntry> cachedUpdateTags() {
+        return this.cachedUpdateTags;
     }
 
     private void markVanillaNoteBlocks() {
@@ -394,11 +440,11 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     }
 
     public boolean canBlockView(BlockStateWrapper wrapper) {
-        Object blockState = wrapper.literalObject();
+        Object blockState = wrapper.minecraftState();
         if (!BlockStateUtils.isOcclude(blockState)) {
             return false;
         }
-        return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isCollisionShapeFullBlock(blockState, EmptyBlockGetterProxy.GETTER_INSTANCE, BLOCK_POS$ZERO);
+        return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isCollisionShapeFullBlock(blockState, EmptyBlockGetterProxy.GETTER_INSTANCE, BlockPosProxy.ZERO);
     }
 
     private void findViewBlockingVanillaBlocks() {
@@ -411,7 +457,7 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     }
 
     @Override
-    protected void setVanillaBlockTags(Key id, List<String> tags) {
+    protected void setVanillaBlockTags(Key id, List<Key> tags) {
         Object block = RegistryUtils.getRegistryValue(BuiltInRegistriesProxy.BLOCK, KeyUtils.toIdentifier(id));
         int blockId = IdMapProxy.INSTANCE.getId(BuiltInRegistriesProxy.BLOCK, block);
         if (blockId == -1) {
@@ -453,21 +499,26 @@ public final class BukkitBlockManager extends AbstractBlockManager {
         Set<String> invalid = new HashSet<>();
         for (int i = 0; i < this.customBlocks.length; i++) {
             DelegatingBlock customBlock = this.customBlocks[i];
-            String value = Config.deceiveBukkitMaterial(i).value();
             Material material;
-            try {
-                material = Material.valueOf(value.toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException e) {
-                if (invalid.add(value)) {
-                    this.plugin.logger().warn("Cannot load 'deceive-bukkit-material'. '" + value + "' is an invalid bukkit material", e);
+            Key key = Config.deceiveBukkitMaterial(i);
+            if (key != null) {
+                String value = key.value();
+                try {
+                    material = Material.valueOf(value.toUpperCase(Locale.ROOT));
+                } catch (IllegalArgumentException e) {
+                    if (invalid.add(value)) {
+                        this.plugin.logger().warn("Cannot load 'deceive-bukkit-material'. '" + value + "' is an invalid bukkit material", e);
+                    }
+                    material = Material.BRICKS;
                 }
-                material = Material.BRICKS;
-            }
-            if (!material.isBlock()) {
-                if (invalid.add(value)) {
-                    this.plugin.logger().warn("Cannot load 'deceive-bukkit-material'. '" + value + "' is an invalid bukkit block material");
+                if (!material.isBlock()) {
+                    if (invalid.add(value)) {
+                        this.plugin.logger().warn("Cannot load 'deceive-bukkit-material'. '" + value + "' is an invalid bukkit block material");
+                    }
+                    material = Material.BRICKS;
                 }
-                material = Material.BRICKS;
+            } else {
+                material = MaterialInjector.getByBlock(customBlock);
             }
             CraftMagicNumbersProxy.BLOCK_MATERIAL.put(customBlock, material);
         }
@@ -492,12 +543,17 @@ public final class BukkitBlockManager extends AbstractBlockManager {
         return this.vanillaBlockStateCount;
     }
 
+    @Override
+    public int currentBlockRegistrySize() {
+        return RegistryUtils.currentBlockRegistrySize();
+    }
+
     @SuppressWarnings("DuplicatedCode")
     @Override
     protected void processSounds() {
         Set<Object> affectedBlockSoundTypes = new HashSet<>();
         for (BlockStateWrapper vanillaBlockState : super.tempVisualBlockStatesInUse) {
-            affectedBlockSoundTypes.add(BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getSoundType(vanillaBlockState.literalObject()));
+            affectedBlockSoundTypes.add(BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.getSoundType(vanillaBlockState.minecraftState()));
         }
 
         Set<Object> placeSounds = new HashSet<>();
@@ -555,10 +611,10 @@ public final class BukkitBlockManager extends AbstractBlockManager {
     }
 
     @Override
-    protected CustomBlock createCustomBlock(@NotNull Holder.Reference<CustomBlock> holder, 
-                                            @NotNull BlockStateVariantProvider variantProvider,
-                                            @NotNull Map<EventTrigger, List<Function<Context>>> events,
-                                            @Nullable LootTable<?> lootTable) {
-        return new BukkitCustomBlock(holder, variantProvider, events, lootTable);
+    protected BlockDefinition createCustomBlock(@NotNull Holder.Reference<BlockDefinition> holder,
+                                                @NotNull BlockStateVariantProvider variantProvider,
+                                                @NotNull Map<EventTrigger, List<Function<Context>>> events,
+                                                @Nullable Loot loot) {
+        return new BukkitBlockDefinition(holder, variantProvider, events, loot);
     }
 }

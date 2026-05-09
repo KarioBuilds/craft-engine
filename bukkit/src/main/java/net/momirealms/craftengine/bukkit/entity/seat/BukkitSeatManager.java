@@ -1,10 +1,8 @@
 package net.momirealms.craftengine.bukkit.entity.seat;
 
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
 import net.momirealms.craftengine.bukkit.entity.furniture.DismountListener1_20;
 import net.momirealms.craftengine.bukkit.entity.furniture.DismountListener1_20_3;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.core.entity.seat.SeatManager;
@@ -30,7 +28,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-public class BukkitSeatManager implements SeatManager, Listener {
+public final class BukkitSeatManager implements SeatManager, Listener {
     private static BukkitSeatManager instance;
     public static final NamespacedKey SEAT_KEY = KeyUtils.toNamespacedKey(SeatManager.SEAT_KEY);
     public static final NamespacedKey SEAT_EXTRA_DATA_KEY = KeyUtils.toNamespacedKey(SeatManager.SEAT_EXTRA_DATA_KEY);
@@ -107,11 +105,11 @@ public class BukkitSeatManager implements SeatManager, Listener {
         }
     }
 
-    protected boolean isSeatEntityType(Entity entity) {
+    private boolean isSeatEntityType(Entity entity) {
         return (entity instanceof ArmorStand || entity instanceof ItemDisplay);
     }
 
-    protected void tryLeavingSeat(@NotNull Player player, @NotNull Entity seat) {
+    private void tryLeavingSeat(@NotNull Player player, @NotNull Entity seat) {
         boolean isSeat = seat.getPersistentDataContainer().has(SEAT_KEY);
         if (!isSeat) return;
         Location location = seat.getLocation();
@@ -123,11 +121,6 @@ public class BukkitSeatManager implements SeatManager, Listener {
         seat.remove();
         location.add(0, 0.301, 0); // 防止座椅较低卡进地下
         EntityUtils.safeDismount(player, location);
-        // 床方块实体特殊处理
-        BukkitServerPlayer serverPlayer = BukkitAdaptors.adapt(player);
-        if (serverPlayer == null) return;
-        serverPlayer.setBedBlockEntity(null);
-        serverPlayer.platformPlayer().updateInventory();
     }
 
     public static BukkitSeatManager instance() {

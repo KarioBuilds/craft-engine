@@ -7,6 +7,7 @@ import net.momirealms.craftengine.core.block.entity.render.ConstantBlockEntityRe
 import net.momirealms.craftengine.core.entity.AbstractEntity;
 import net.momirealms.craftengine.core.entity.culling.Cullable;
 import net.momirealms.craftengine.core.entity.culling.CullableHolder;
+import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureLightData;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.context.CooldownData;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
@@ -29,12 +30,12 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
     public abstract boolean isSecondaryUseActive();
 
     @NotNull
-    public abstract Item<?> getItemInHand(InteractionHand hand);
+    public abstract Item getItemInHand(InteractionHand hand);
 
     @NotNull
-    public abstract Item<?> getItemBySlot(int slot);
+    public abstract Item getItemBySlot(int slot);
 
-    public abstract void setItemInHand(InteractionHand hand, Item<?> item);
+    public abstract void setItemInHand(InteractionHand hand, Item item);
 
     @Override
     public abstract Object platformPlayer();
@@ -86,7 +87,7 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
 
     public abstract boolean canPlace(BlockPos pos, Object state);
 
-    public abstract void sendToast(Component text, Item<?> icon, AdvancementType type);
+    public abstract void sendToast(Component text, Item icon, AdvancementType type);
 
     public abstract void sendActionBar(Component text);
 
@@ -103,6 +104,8 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
     public abstract boolean lastInteractEntityCheck(@NotNull InteractionHand hand);
 
     public abstract int gameTicks();
+
+    public abstract boolean hasInteractionInThisTick();
 
     public abstract void swingHand(InteractionHand hand);
 
@@ -136,7 +139,11 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
         this.playSound(pos, data.id(), source, data.volume().get(), data.pitch().get());
     }
 
-    public abstract void giveItem(Item<?> item);
+    public abstract void giveItem(Item item, boolean spawnFakeEntity);
+
+    public void giveItem(Item item) {
+        giveItem(item, true);
+    }
 
     public abstract void closeInventory();
 
@@ -169,6 +176,18 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
 
     public boolean isAdventureMode() {
         return gameMode() == GameMode.ADVENTURE;
+    }
+
+    public abstract double health();
+
+    public abstract void setHealth(double amount);
+
+    public abstract double maxHealth();
+
+    public void heal(double amount) {
+        double targetHealth = Math.min(this.health() + amount, this.maxHealth());
+        targetHealth = Math.max(targetHealth, health());
+        this.setHealth(targetHealth);
     }
 
     public abstract int foodLevel();
@@ -223,7 +242,7 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
 
     public abstract void setExperienceLevels(int level);
 
-    public abstract void sendTotemAnimation(Item<?> totem, @Nullable SoundData sound, boolean silent);
+    public abstract void sendTotemAnimation(Item totem, @Nullable SoundData sound, boolean silent);
 
     public abstract void addTrackedBlockEntities(Map<BlockPos, ConstantBlockEntityRenderer> renders);
 
@@ -235,9 +254,11 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
 
     public abstract void addTrackedEntity(int entityId, Cullable cullable);
 
+    public abstract void removeTrackedBlockEntities(BlockPos pos);
+
     public abstract void clearTrackedBlockEntities();
 
-    public abstract int clearOrCountMatchingInventoryItems(Predicate<Item<?>> predicate, int count);
+    public abstract int clearOrCountMatchingInventoryItems(Predicate<Item> predicate, int count);
 
     public int clearOrCountMatchingInventoryItems(Key itemId, int count) {
         return this.clearOrCountMatchingInventoryItems(item -> itemId.equals(item.id()), count);
@@ -249,6 +270,8 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
     public void remove() {
     }
 
+    public abstract FurnitureLightData furnitureLightData();
+
     public abstract void playParticle(Key particleId, double x, double y, double z);
 
     public abstract void removeTrackedEntity(int entityId);
@@ -258,6 +281,8 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
     public abstract WorldPosition eyePosition();
 
     public abstract Cache<Object, Boolean> receivedMapData();
+
+    public abstract boolean canInteractPoint(Vec3d vec3d, double range);
 
     @Override
     public boolean isValid() {

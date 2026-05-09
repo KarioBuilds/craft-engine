@@ -6,31 +6,25 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.entity.projectile.ProjectileMeta;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.item.ItemBuildContext;
 import net.momirealms.craftengine.core.plugin.network.EntityPacketHandler;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
 import net.momirealms.craftengine.core.plugin.network.event.ByteBufPacketEvent;
-import net.momirealms.craftengine.core.plugin.network.event.NMSPacketEvent;
 import net.momirealms.craftengine.core.util.FriendlyByteBuf;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.Vec3d;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundMoveEntityPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.PositionMoveRotationProxy;
-import org.bukkit.inventory.ItemStack;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public class ProjectilePacketHandler implements EntityPacketHandler {
+public final class ProjectilePacketHandler implements EntityPacketHandler {
     private final int entityId;
     private final BukkitCustomProjectile projectile;
 
@@ -51,26 +45,44 @@ public class ProjectilePacketHandler implements EntityPacketHandler {
     }
 
     @Override
-    public void handleSyncEntityPosition(NetWorkUser user, NMSPacketEvent event, Object packet) {
-        Object positionMoveRotation = ClientboundEntityPositionSyncPacketProxy.INSTANCE.getValues(packet);
-        float xRot = PositionMoveRotationProxy.INSTANCE.getXRot(positionMoveRotation);
-        float yRot = PositionMoveRotationProxy.INSTANCE.getYRot(positionMoveRotation);
-        PositionMoveRotationProxy.INSTANCE.setXRot(positionMoveRotation, Math.clamp(-xRot, -90.0F, 90.0F));
-        PositionMoveRotationProxy.INSTANCE.setYRot(positionMoveRotation, -yRot);
+    public void handleSyncEntityPosition(NetWorkUser user, ByteBufPacketEvent event, int entityId, FriendlyByteBuf buf) {
+        Vec3d position = buf.readVec3();
+        Vec3d deltaMovement = buf.readVec3();
+        float yRot = buf.readFloat();
+        float xRot = buf.readFloat();
+        boolean onGround = buf.readBoolean();
+        event.setChanged(true);
+        buf.clear();
+        buf.writeVarInt(event.packetID());
+        buf.writeVarInt(entityId);
+        buf.writeVec3(position);
+        buf.writeVec3(deltaMovement);
+        buf.writeFloat(-yRot);
+        buf.writeFloat(MiscUtils.clamp(-xRot, -90.0F, 90.0F));
+        buf.writeBoolean(onGround);
     }
 
     @Override
-    public void handleMoveAndRotate(NetWorkUser user, NMSPacketEvent event, Object packet) {
-        float xRot = MiscUtils.unpackDegrees(ClientboundMoveEntityPacketProxy.INSTANCE.getXRot(packet));
-        float yRot = MiscUtils.unpackDegrees(ClientboundMoveEntityPacketProxy.INSTANCE.getYRot(packet));
-        ClientboundMoveEntityPacketProxy.INSTANCE.setXRot(packet, MiscUtils.packDegrees(MiscUtils.clamp(-xRot, -90.0F, 90.0F)));
-        ClientboundMoveEntityPacketProxy.INSTANCE.setYRot(packet, MiscUtils.packDegrees(-yRot));
-        int entityId = ClientboundMoveEntityPacketProxy.INSTANCE.getEntityId(packet);
-        Object setEntityDataPacket = ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(entityId, this.createCustomProjectileEntityDataValues((Player) user));
-        event.replacePacket(ClientboundBundlePacketProxy.INSTANCE.newInstance(List.of(packet, setEntityDataPacket)));
+    public void handleMoveAndRotate(NetWorkUser user, ByteBufPacketEvent event, int entityId, FriendlyByteBuf buf) {
+        short xa = buf.readShort();
+        short ya = buf.readShort();
+        short za = buf.readShort();
+        float yRot = MiscUtils.unpackDegrees(buf.readByte());
+        float xRot = MiscUtils.unpackDegrees(buf.readByte());
+        boolean onGround = buf.readBoolean();
+        event.setChanged(true);
+        buf.clear();
+        buf.writeVarInt(event.packetID());
+        buf.writeVarInt(entityId);
+        buf.writeShort(xa);
+        buf.writeShort(ya);
+        buf.writeShort(za);
+        buf.writeByte(MiscUtils.packDegrees(-yRot));
+        buf.writeByte(MiscUtils.packDegrees(MiscUtils.clamp(-xRot, -90.0F, 90.0F)));
+        buf.writeBoolean(onGround);
     }
 
-    public void convertAddCustomProjectilePacket(FriendlyByteBuf buf, ByteBufPacketEvent event) {
+    public void convertAddCustomProjectilePacket(FriendlyByteBuf buf, ByteBufPacketEvent event, NetWorkUser user) {
         UUID uuid = buf.readUUID();
         buf.readVarInt(); // type
         double x = buf.readDouble();
@@ -84,34 +96,38 @@ public class ProjectilePacketHandler implements EntityPacketHandler {
         int xa = VersionHelper.isOrAbove1_21_9() ? -1 : buf.readShort();
         int ya = VersionHelper.isOrAbove1_21_9() ? -1 : buf.readShort();
         int za = VersionHelper.isOrAbove1_21_9() ? -1 : buf.readShort();
-        event.setChanged(true);
-        buf.clear();
-        buf.writeVarInt(event.packetID());
-        buf.writeVarInt(this.entityId);
-        buf.writeUUID(uuid);
-        buf.writeVarInt(EntityTypeProxy.ITEM_DISPLAY$registryId);
-        buf.writeDouble(x);
-        buf.writeDouble(y);
-        buf.writeDouble(z);
-        if (VersionHelper.isOrAbove1_21_9()) buf.writeLpVec3(movement);
-        buf.writeByte(MiscUtils.packDegrees(MiscUtils.clamp(-MiscUtils.unpackDegrees(xRot), -90.0F, 90.0F)));
-        buf.writeByte(MiscUtils.packDegrees(-MiscUtils.unpackDegrees(yRot)));
-        buf.writeByte(yHeadRot);
-        buf.writeVarInt(data);
-        if (!VersionHelper.isOrAbove1_21_9()) buf.writeShort(xa);
-        if (!VersionHelper.isOrAbove1_21_9()) buf.writeShort(ya);
-        if (!VersionHelper.isOrAbove1_21_9()) buf.writeShort(za);
+        event.setCancelled(true);
+        user.sendPackets(List.of(
+                ClientboundAddEntityPacketProxy.INSTANCE.newInstance(this.entityId, uuid, x, y, z,
+                        MiscUtils.clamp(-MiscUtils.unpackDegrees(xRot), -90.0F, 90.0F),
+                        MiscUtils.packDegrees(-MiscUtils.unpackDegrees(yRot)),
+                        EntityTypeProxy.ITEM_DISPLAY,
+                        data,
+                        movement != null ? Vec3Proxy.INSTANCE.newInstance(movement.x, movement.y, movement.z) : Vec3Proxy.INSTANCE.newInstance((double) xa / 8000.0, (double) ya / 8000.0, (double) za / 8000.0),
+                        MiscUtils.unpackDegrees(yHeadRot)
+                ),
+                ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(entityId, this.createCustomProjectileEntityDataValues((Player) user))
+        ), false);
     }
 
     public List<Object> createCustomProjectileEntityDataValues(Player player) {
         List<Object> itemDisplayValues = new ArrayList<>();
-        Optional<CustomItem<ItemStack>> customItem = BukkitItemManager.instance().getCustomItem(this.projectile.metadata().item());
-        if (customItem.isEmpty()) return itemDisplayValues;
+        Item displayedItem = BukkitItemManager.instance().createWrappedItem(this.projectile.metadata().item(), player);
+        if (displayedItem == null) return itemDisplayValues;
+        displayedItem = BukkitItemManager.instance().s2c(displayedItem, player).orElse(displayedItem);
+
         ProjectileMeta meta = this.projectile.metadata();
-        Item<ItemStack> displayedItem = customItem.get().buildItem(ItemBuildContext.empty());
-        // 我们应当使用新的展示物品的组件覆盖原物品的组件，以完成附魔，附魔光效等组件的继承
-        Item<ItemStack> item = this.projectile.item().mergeCopy(displayedItem);
-        displayedItem = BukkitItemManager.instance().s2c(item, player).orElse(item);
+
+        // 我们应当使用新的展示物品的组件覆盖原物品的组件，以完成附魔，附魔光效等组件的继承.
+        Item item = this.projectile.item();
+        item.enchantments().ifPresent(displayedItem::setEnchantments);
+        if (VersionHelper.isOrAbove1_20_5()) {
+            Optional<Boolean> glint = item.glint();
+            if (glint.isPresent()) {
+                displayedItem.glint(glint.get());
+            }
+        }
+
         ItemDisplayEntityData.InterpolationDelay.addEntityDataIfNotDefaultValue(-1, itemDisplayValues);
         ItemDisplayEntityData.Translation.addEntityDataIfNotDefaultValue(meta.translation(), itemDisplayValues);
         ItemDisplayEntityData.Scale.addEntityDataIfNotDefaultValue(meta.scale(), itemDisplayValues);
@@ -123,8 +139,7 @@ public class ProjectilePacketHandler implements EntityPacketHandler {
             ItemDisplayEntityData.InterpolationDuration.addEntityDataIfNotDefaultValue(1, itemDisplayValues);
         }
 
-        Object literalItem = displayedItem.getLiteralObject();
-        ItemDisplayEntityData.DisplayedItem.addEntityDataIfNotDefaultValue(literalItem, itemDisplayValues);
+        ItemDisplayEntityData.DisplayedItem.addEntityDataIfNotDefaultValue(displayedItem.minecraftItem(), itemDisplayValues);
         ItemDisplayEntityData.DisplayType.addEntityDataIfNotDefaultValue(meta.displayType().id(), itemDisplayValues);
         ItemDisplayEntityData.BillboardConstraints.addEntityDataIfNotDefaultValue(meta.billboard().id(), itemDisplayValues);
         return itemDisplayValues;

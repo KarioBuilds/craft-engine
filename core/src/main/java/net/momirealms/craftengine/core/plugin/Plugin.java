@@ -60,7 +60,7 @@ public interface Plugin {
 
     String serverVersion();
 
-    <T> ItemManager<T> itemManager();
+    <T> ItemManager itemManager();
 
     BlockManager blockManager();
 
@@ -80,7 +80,7 @@ public interface Plugin {
 
     PackManager packManager();
 
-    <T> RecipeManager<T> recipeManager();
+    <T> RecipeManager recipeManager();
 
     <P extends Plugin, C> SenderFactory<P, C> senderFactory();
 
@@ -92,7 +92,7 @@ public interface Plugin {
 
     SoundManager soundManager();
 
-    LootManager vanillaLootManager();
+    LootManager lootManager();
 
     CompatibilityManager compatibilityManager();
 
