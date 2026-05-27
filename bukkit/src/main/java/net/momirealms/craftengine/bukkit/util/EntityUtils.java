@@ -1,6 +1,7 @@
 package net.momirealms.craftengine.bukkit.util;
 
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
+import net.momirealms.craftengine.core.entity.data.EntityData;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
@@ -11,6 +12,7 @@ import net.momirealms.craftengine.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundTeleportEntityPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.LivingEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.PoseProxy;
@@ -34,7 +36,7 @@ public final class EntityUtils {
     private EntityUtils() {}
 
     public static Object createUpdatePosPacket(int entityId, double x, double y, double z, float yRot, float xRot, boolean onGround) {
-        if (VersionHelper.isOrAbove1_21_2()) {
+        if (VersionHelper.isOrAbove1_21_2) {
             Object position = Vec3Proxy.INSTANCE.newInstance(x, y, z);
             Object values = PositionMoveRotationProxy.INSTANCE.newInstance(position, Vec3Proxy.ZERO, yRot, xRot);
             return ClientboundEntityPositionSyncPacketProxy.INSTANCE.newInstance(entityId, values, onGround);
@@ -52,11 +54,11 @@ public final class EntityUtils {
     }
 
     public static Vec3d getPassengerRidingPosition(Object nmsVehicle, Object nmsPassenger) {
-        if (VersionHelper.isOrAbove1_20_5()) {
+        if (VersionHelper.isOrAbove1_20_5) {
             Vec3d passengerRidingPosition = LocationUtils.fromVec(EntityProxy.INSTANCE.getPassengerRidingPosition(nmsVehicle, nmsPassenger));
             Vec3d vehicleAttachmentPoint = LocationUtils.fromVec(EntityProxy.INSTANCE.getVehicleAttachmentPoint(nmsVehicle, nmsPassenger));
             return passengerRidingPosition.subtract(vehicleAttachmentPoint);
-        } else if (VersionHelper.isOrAbove1_20_2()) {
+        } else if (VersionHelper.isOrAbove1_20_2) {
             Vec3d passengerRidingPosition = LocationUtils.fromVec(EntityProxy.INSTANCE.getPassengerRidingPosition(nmsVehicle, nmsPassenger));
             return passengerRidingPosition.add(0, EntityProxy.INSTANCE.getMyRidingOffset(nmsVehicle, nmsPassenger), 0);
         } else {
@@ -72,10 +74,18 @@ public final class EntityUtils {
     }
 
     public static Entity spawnEntity(World world, Location loc, EntityType type, Consumer<Entity> function) {
-        if (VersionHelper.isOrAbove1_20_2()) {
+        if (VersionHelper.isOrAbove1_20_2) {
             return world.spawnEntity(loc, type, CreatureSpawnEvent.SpawnReason.CUSTOM, function);
         } else {
             return LegacyEntityUtils.spawnEntity(world, loc, type, function);
+        }
+    }
+
+    public static <T extends Entity> T spawnEntity(World world, Location loc, Class<T> type, Consumer<T> function) {
+        if (VersionHelper.isOrAbove1_20_2) {
+            return world.spawn(loc, type, CreatureSpawnEvent.SpawnReason.CUSTOM, function);
+        } else {
+            return LegacyEntityUtils.spawn(world, loc, type, function);
         }
     }
 
@@ -115,7 +125,7 @@ public final class EntityUtils {
                 if (!CollisionUtils.test(serverLevel, List.of(newAABB), o -> true)) {
                     continue;
                 }
-                if (VersionHelper.isFolia()) {
+                if (VersionHelper.isFolia) {
                     player.teleportAsync(new Location(player.getWorld(), x, pos.y() + floorHeight, z, player.getYaw(), player.getPitch()));
                 } else {
                     player.teleport(new Location(player.getWorld(), x, pos.y() + floorHeight, z, player.getYaw(), player.getPitch()));
@@ -141,5 +151,13 @@ public final class EntityUtils {
 
     private static boolean isBlockFloorValid(double height) {
         return !Double.isInfinite(height) && height < (double) 1.0F;
+    }
+
+    public static <T> T getEntityDataValue(Object dataValue, EntityData<T> data) {
+        try {
+            return SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(dataValue);
+        } catch (ClassCastException e) {
+            throw new IllegalArgumentException("Expected " + data + ", but got " + dataValue, e);
+        }
     }
 }

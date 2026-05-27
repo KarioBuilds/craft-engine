@@ -7,6 +7,7 @@ import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.plugin.network.handler.*;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.RegistryUtils;
+import net.momirealms.craftengine.core.entity.projectile.ProjectileDisplay;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.network.EntityPacketHandler;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
@@ -53,10 +54,13 @@ public final class AddEntityListener implements ByteBufferPacketListener {
         this.handlers[EntityTypeProxy.TRIDENT$registryId] = createOptionalCustomProjectileEntityHandler(false);
         this.handlers[EntityTypeProxy.ARROW$registryId] = createOptionalCustomProjectileEntityHandler(false);
         this.handlers[EntityTypeProxy.SPECTRAL_ARROW$registryId] = createOptionalCustomProjectileEntityHandler(false);
-        if (VersionHelper.isOrAbove1_20_3()) {
+        if (VersionHelper.isOrAbove1_21) {
+            this.handlers[EntityTypeProxy.WIND_CHARGE$registryId] = createOptionalCustomProjectileEntityHandler(false);
+        }
+        if (VersionHelper.isOrAbove1_20_3) {
             this.handlers[EntityTypeProxy.TNT$registryId] = simpleAddEntityHandler(PrimedTNTPacketHandler.INSTANCE);
         }
-        if (VersionHelper.isOrAbove1_20_5()) {
+        if (VersionHelper.isOrAbove1_20_5) {
             this.handlers[EntityTypeProxy.OMINOUS_ITEM_SPAWNER$registryId] = simpleAddEntityHandler(ItemPacketHandler.INSTANCE);
         }
         this.handlers[EntityTypeProxy.FALLING_BLOCK$registryId] = (user, event) -> {
@@ -67,17 +71,17 @@ public final class AddEntityListener implements ByteBufferPacketListener {
             double x = buf.readDouble();
             double y = buf.readDouble();
             double z = buf.readDouble();
-            Vec3d movement = VersionHelper.isOrAbove1_21_9() ? buf.readLpVec3() : null;
+            Vec3d movement = VersionHelper.isOrAbove1_21_9 ? buf.readLpVec3() : null;
             byte xRot = buf.readByte();
             byte yRot = buf.readByte();
             byte yHeadRot = buf.readByte();
             int data = buf.readVarInt();
             // Falling blocks
-            int remapped = BukkitNetworkManager.instance().remapBlockState(data, user.clientModEnabled());
+            int remapped = BukkitNetworkManager.instance().remapBlockState(data, user.clientCustomBlockEnabled());
             if (remapped != data) {
-                int xa = VersionHelper.isOrAbove1_21_9() ? -1 : buf.readShort();
-                int ya = VersionHelper.isOrAbove1_21_9() ? -1 : buf.readShort();
-                int za = VersionHelper.isOrAbove1_21_9() ? -1 : buf.readShort();
+                int xa = VersionHelper.isOrAbove1_21_9 ? -1 : buf.readShort();
+                int ya = VersionHelper.isOrAbove1_21_9 ? -1 : buf.readShort();
+                int za = VersionHelper.isOrAbove1_21_9 ? -1 : buf.readShort();
                 event.setChanged(true);
                 buf.clear();
                 buf.writeVarInt(event.packetID());
@@ -87,14 +91,14 @@ public final class AddEntityListener implements ByteBufferPacketListener {
                 buf.writeDouble(x);
                 buf.writeDouble(y);
                 buf.writeDouble(z);
-                if (VersionHelper.isOrAbove1_21_9()) buf.writeLpVec3(movement);
+                if (VersionHelper.isOrAbove1_21_9) buf.writeLpVec3(movement);
                 buf.writeByte(xRot);
                 buf.writeByte(yRot);
                 buf.writeByte(yHeadRot);
                 buf.writeVarInt(remapped);
-                if (!VersionHelper.isOrAbove1_21_9()) buf.writeShort(xa);
-                if (!VersionHelper.isOrAbove1_21_9()) buf.writeShort(ya);
-                if (!VersionHelper.isOrAbove1_21_9()) buf.writeShort(za);
+                if (!VersionHelper.isOrAbove1_21_9) buf.writeShort(xa);
+                if (!VersionHelper.isOrAbove1_21_9) buf.writeShort(ya);
+                if (!VersionHelper.isOrAbove1_21_9) buf.writeShort(za);
             }
         };
         this.handlers[EntityTypeProxy.ITEM_DISPLAY$registryId] = (user, event) -> {
@@ -158,9 +162,16 @@ public final class AddEntityListener implements ByteBufferPacketListener {
             FriendlyByteBuf buf = event.getBuffer();
             int id = buf.readVarInt();
             BukkitProjectileManager.instance().projectileByEntityId(id).ifPresentOrElse(customProjectile -> {
-                ProjectilePacketHandler handler = new ProjectilePacketHandler(customProjectile, id);
-                handler.convertAddCustomProjectilePacket(buf, event, user);
-                user.entityPacketHandlers().put(id, handler);
+                ProjectileDisplay display = customProjectile.metadata().display();
+                if (display != null) {
+                    ProjectilePacketHandler handler = new ProjectilePacketHandler(customProjectile, display, id);
+                    handler.convertAddCustomProjectilePacket(buf, event, user);
+                    user.entityPacketHandlers().put(id, handler);
+                } else {
+                    if (fallback) {
+                        user.entityPacketHandlers().put(id, CommonItemPacketHandler.INSTANCE);
+                    }
+                }
             }, () -> {
                 if (fallback) {
                     user.entityPacketHandlers().put(id, CommonItemPacketHandler.INSTANCE);

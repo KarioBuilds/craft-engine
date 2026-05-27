@@ -26,6 +26,7 @@ import net.momirealms.craftengine.proxy.bukkit.craftbukkit.CraftWorldProxy;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.server.level.ServerLevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
@@ -115,7 +116,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         Bukkit.getPluginManager().registerEvents(this.furnitureEventListener, this.plugin.javaPlugin());
 
         // 对世界上已有实体的记录
-        if (VersionHelper.isFolia()) {
+        if (VersionHelper.isFolia) {
             BiConsumer<Entity, Runnable> taskExecutor = (entity, runnable) -> entity.getScheduler().run(this.plugin.javaPlugin(), (t) -> runnable.run(), () -> {});
             for (World world : Bukkit.getWorlds()) {
                 List<Entity> entities = world.getEntities();
@@ -150,7 +151,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
                 if (entity instanceof ItemDisplay itemDisplay) {
-                    handleMetaEntityUnload(itemDisplay);
+                    handleMetaEntityUnload(itemDisplay, true);
                 } else if (BukkitFurnitureManager.COLLISION_ENTITY_CLASS.isInstance(entity)) {
                     handleCollisionEntityUnload(entity);
                 }
@@ -185,7 +186,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
     }
 
     // 当元数据实体被卸载了
-    void handleMetaEntityUnload(ItemDisplay entity) {
+    void handleMetaEntityUnload(ItemDisplay entity, boolean isStopping) {
         // 不是持久化的
         if (!entity.isPersistent()) {
             return;
@@ -195,20 +196,22 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         if (furniture != null) {
 
             // 标记无效
-            this.invalidateFurniture(furniture);
+            this.invalidateFurniture(furniture, isStopping);
 
             // 区块还在加载的时候，就重复卸载了。为极其特殊情况
-            Location location = entity.getLocation();
-            Object entityLookup = WorldUtils.getEntityLookup(location.getWorld());
-            Object slices = EntityLookupProxy.INSTANCE.getChunk(entityLookup, location.getBlockX() >> 4, location.getBlockZ() >> 4);
-            boolean isPreventing = slices != null && ChunkEntitySlicesProxy.INSTANCE.isPreventingStatusUpdates(slices);
-            if (!isPreventing) {
-                furniture.destroySeats();
+            if (!isStopping) {
+                Location location = entity.getLocation();
+                Object entityLookup = WorldUtils.getEntityLookup(location.getWorld());
+                Object slices = EntityLookupProxy.INSTANCE.getChunk(entityLookup, location.getBlockX() >> 4, location.getBlockZ() >> 4);
+                boolean isPreventing = slices != null && ChunkEntitySlicesProxy.INSTANCE.isPreventingStatusUpdates(slices);
+                if (!isPreventing) {
+                    furniture.destroySeats();
+                }
             }
 
             // 触发行为卸载
             try {
-                furniture.controller.onUnload();
+                furniture.controller.onUnload(isStopping);
             } finally {
                 furniture.saveIfDirty();
             }
@@ -260,7 +263,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         if (optionalFurniture.isEmpty()) return;
 
         // 只对1.20.2及以上生效，1.20.1比较特殊
-        if (!VersionHelper.isOrAbove1_20_2()) {
+        if (!VersionHelper.isOrAbove1_20_2) {
             return;
         }
 
@@ -289,7 +292,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
 
         // 这个区块还处于加载实体中，这个时候不处理（1.20.1需要特殊处理）
         Location location = entity.getLocation();
-        if (VersionHelper.isOrAbove1_20_2() && !isEntitiesLoaded(location)) {
+        if (VersionHelper.isOrAbove1_20_2 && !isEntitiesLoaded(location)) {
             return;
         }
 
@@ -333,7 +336,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         }
 
         // 移除被WorldEdit错误复制的碰撞实体
-        runSafeEntityOperation(location, entity::remove);
+        runSafeEntityOperation(location.getChunk(), entity::remove);
     }
 
     public void handleCollisionEntityDuringChunkLoad(Entity collisionEntity) {
@@ -368,7 +371,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         BukkitFurniture bukkitFurniture = new BukkitFurniture(display, furniture, getFurnitureDataAccessor(display));
         initFurniture(bukkitFurniture);
         Location location = display.getLocation();
-        runSafeEntityOperation(location, () -> {
+        runSafeEntityOperation(location.getChunk(), () -> {
             bukkitFurniture.addCollidersToWorld();
             for (FurnitureElement element : bukkitFurniture.elements()) {
                 element.activate();
@@ -392,7 +395,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
             if (ticker != null) {
                 TickingFurnitureImpl<FurnitureController> tickingFurniture = new TickingFurnitureImpl<>(furniture, ticker);
                 this.syncTickers.put(entityId, tickingFurniture);
-                if (VersionHelper.isFolia()) {
+                if (VersionHelper.isFolia) {
                     furniture.bukkitEntity().getScheduler().runAtFixedRate(this.plugin.javaPlugin(), (t) -> {
                         if (tickingFurniture.isValid()) {
                             tickingFurniture.tick();
@@ -413,7 +416,7 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         }
     }
 
-    void invalidateFurniture(BukkitFurniture furniture) {
+    void invalidateFurniture(BukkitFurniture furniture, boolean isStopping) {
         int entityId = furniture.entityId();
         // 移除entity id映射
         this.byMetaEntityId.remove(entityId);
@@ -422,6 +425,9 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
             this.byInteractableEntityId.remove(id);
         }
         for (Collider collisionEntity : furniture.colliders()) {
+            if (!isStopping) {
+                tryRemoveCollider(collisionEntity);
+            }
             this.byColliderEntityId.remove(collisionEntity.entityId());
         }
         for (FurnitureElement element : furniture.elements()) {
@@ -429,18 +435,32 @@ public final class BukkitFurnitureManager extends AbstractFurnitureManager {
         }
     }
 
-    private void runSafeEntityOperation(Location location, Runnable action) {
-        Object world = CraftWorldProxy.INSTANCE.getWorld(location.getWorld());
+    private void tryRemoveCollider(Collider collider) {
+        Object entity = collider.handle();
+        Object level = EntityProxy.INSTANCE.getLevel(entity);
         Object entityLookup;
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
+            entityLookup = LevelProxy.INSTANCE.moonrise$getEntityLookup(level);
+        } else {
+            entityLookup = ServerLevelProxy.INSTANCE.getEntityLookup(level);
+        }
+        if (!EntityLookupProxy.INSTANCE.canRemoveEntity(entityLookup, entity)) return;
+        collider.destroy();
+    }
+
+    private void runSafeEntityOperation(Chunk chunk, Runnable action) {
+        if (!chunk.isLoaded()) return;
+        Object world = CraftWorldProxy.INSTANCE.getWorld(chunk.getWorld());
+        Object entityLookup;
+        if (VersionHelper.isOrAbove1_21) {
             entityLookup = LevelProxy.INSTANCE.moonrise$getEntityLookup(world);
         } else {
             entityLookup = ServerLevelProxy.INSTANCE.getEntityLookup(world);
         }
-        Object slices = EntityLookupProxy.INSTANCE.getChunk(entityLookup, location.getBlockX() >> 4, location.getBlockZ() >> 4);
+        Object slices = EntityLookupProxy.INSTANCE.getChunk(entityLookup, chunk.getX(), chunk.getZ());
         boolean preventChange = slices != null && ChunkEntitySlicesProxy.INSTANCE.isPreventingStatusUpdates(slices);
         if (preventChange) {
-            this.plugin.scheduler().sync().runLater(action, 1, location.getWorld(), location.getBlockX() >> 4, location.getBlockZ() >> 4);
+            this.plugin.scheduler().platform().runLater(action, 1, chunk.getWorld(), chunk.getX(), chunk.getZ());
         } else {
             action.run();
         }

@@ -14,12 +14,10 @@ import net.momirealms.craftengine.core.font.FontManager;
 import net.momirealms.craftengine.core.item.ItemManager;
 import net.momirealms.craftengine.core.item.processor.ItemProcessors;
 import net.momirealms.craftengine.core.item.recipe.RecipeManager;
-import net.momirealms.craftengine.core.item.recipe.network.legacy.LegacyRecipeTypes;
-import net.momirealms.craftengine.core.item.recipe.network.modern.display.RecipeDisplayTypes;
-import net.momirealms.craftengine.core.item.recipe.network.modern.display.slot.SlotDisplayTypes;
 import net.momirealms.craftengine.core.item.setting.ItemSettingsModifiers;
 import net.momirealms.craftengine.core.loot.LootManager;
 import net.momirealms.craftengine.core.pack.PackManager;
+import net.momirealms.craftengine.core.painting.PaintingManager;
 import net.momirealms.craftengine.core.plugin.classpath.ClassPathAppender;
 import net.momirealms.craftengine.core.plugin.command.CraftEngineCommandManager;
 import net.momirealms.craftengine.core.plugin.command.sender.SenderFactory;
@@ -42,6 +40,10 @@ import net.momirealms.craftengine.core.plugin.logger.PluginLogger;
 import net.momirealms.craftengine.core.plugin.logger.filter.DisconnectLogFilter;
 import net.momirealms.craftengine.core.plugin.logger.filter.LogFilter;
 import net.momirealms.craftengine.core.plugin.network.NetworkManager;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.legacy.LegacyRecipeTypes;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.modern.display.RecipeDisplayTypes;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.modern.display.slot.SlotDisplayTypes;
+import net.momirealms.craftengine.core.plugin.proxy.ProxyMessageManager;
 import net.momirealms.craftengine.core.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.craftengine.core.sound.SoundManager;
 import net.momirealms.craftengine.core.util.CompletableFutures;
@@ -75,7 +77,7 @@ public abstract class CraftEngine implements Plugin {
     protected ClassPathAppender sharedClassPathAppender;
     protected ClassPathAppender privateClassPathAppender;
     protected DependencyManager dependencyManager;
-    protected SchedulerAdapter<?> scheduler;
+    protected SchedulerAdapter scheduler;
     protected NetworkManager networkManager;
     protected FontManager fontManager;
     protected PackManager packManager;
@@ -99,13 +101,17 @@ public abstract class CraftEngine implements Plugin {
     protected SeatManager seatManager;
     protected EntityCullingManager entityCullingManager;
     protected TeamManager teamManager;
+    protected PaintingManager paintingManager;
+    protected ProxyMessageManager proxyMessageManager;
 
-    private final PluginTaskRegistry beforeEnableTaskRegistry = new PluginTaskRegistry();
-    private final PluginTaskRegistry afterEnableTaskRegistry = new PluginTaskRegistry();
+    private final PluginTaskRegistry preEnableTaskRegistry = new PluginTaskRegistry();
+    private final PluginTaskRegistry postEnableTaskRegistry = new PluginTaskRegistry();
 
     private final Consumer<CraftEngine> reloadEventDispatcher;
     private boolean isReloading;
     private boolean isInitializing;
+    private boolean isStopping;
+    private boolean isDisabled;
 
     private String buildByBit = "%%__BUILTBYBIT__%%";
     private String polymart = "%%__POLYMART__%%";
@@ -144,6 +150,20 @@ public abstract class CraftEngine implements Plugin {
         this.itemBrowserManager = new ItemBrowserManagerImpl(this);
         // 初始化实体剔除器
         this.entityCullingManager = EntityCullingManager.INSTANCE;
+
+        // 迁移缓存
+        try {
+            Migrator.migrateCache(this);
+        } catch (Exception e) {
+            this.logger.warn("Failed to migrate cache", e);
+        }
+
+        // 迁移世界数据
+        try {
+            Migrator.migrateWorldData(this);
+        } catch (Exception e) {
+            this.logger.warn("Failed to migrate worlds", e);
+        }
     }
 
     public void setUpConfigAndLocale() {
@@ -174,6 +194,7 @@ public abstract class CraftEngine implements Plugin {
         this.fontManager.reload();
         this.itemManager.reload();
         this.soundManager.reload();
+        this.paintingManager.reload();
         this.itemBrowserManager.reload();
         this.blockManager.reload();
         this.worldManager.reload();
@@ -184,6 +205,7 @@ public abstract class CraftEngine implements Plugin {
         this.projectileManager.reload();
         this.seatManager.reload();
         this.networkManager.reload();
+        this.proxyMessageManager.reload();
     }
 
     private void runDelayTasks(boolean reloadRecipe) {
@@ -266,6 +288,8 @@ public abstract class CraftEngine implements Plugin {
                         Timestamp timestamp = new Timestamp();
                         // 注册唱片机音乐
                         this.soundManager.runDelayedSyncTasks();
+                        // 注册画
+                        this.paintingManager.runDelayedSyncTasks();
                         // 同步注册配方
                         if (reloadRecipe) {
                             this.recipeManager.runDelayedSyncTasks();
@@ -310,6 +334,8 @@ public abstract class CraftEngine implements Plugin {
         this.lootManager.delayedInit();
         // 注册脱离坐骑监听器
         this.seatManager.delayedInit();
+        // 注册玩家相关监听器
+        this.proxyMessageManager.delayedInit();
         // 加载实体剔除线程
         this.entityCullingManager.load();
 
@@ -319,7 +345,7 @@ public abstract class CraftEngine implements Plugin {
         }
 
         // 延迟任务
-        this.beforeEnableTaskRegistry.executeTasks();
+        this.preEnableTaskRegistry.executeTasks();
 
         if (!Config.delayConfigurationLoad()) {
             // 清理缓存，初始化一些东西，不需要读config和translation，因为boostrap阶段已经读取过了
@@ -333,10 +359,10 @@ public abstract class CraftEngine implements Plugin {
         }
 
         // 延迟任务
-        this.afterEnableTaskRegistry.executeTasks();
+        this.postEnableTaskRegistry.executeTasks();
 
         // 延迟重载，以便其他依赖CraftEngine的插件能注册parser
-        this.scheduler.sync().runDelayed(() -> {
+        this.scheduler.platform().runDelayed(() -> {
             // 初始化一些平台的任务
             this.platformDelayedEnable();
 
@@ -353,6 +379,8 @@ public abstract class CraftEngine implements Plugin {
                 this.networkManager.delayedLoad();
                 // 注册唱片机音乐
                 this.soundManager.runDelayedSyncTasks();
+                // 注册画
+                this.paintingManager.runDelayedSyncTasks();
                 // 同步注册配方
                 this.recipeManager.runDelayedSyncTasks();
             } else {
@@ -380,7 +408,7 @@ public abstract class CraftEngine implements Plugin {
 
             // 用于兼容那些注册群系比较晚的插件，点名批评某R开头的季节插件
             int biomeCount = this.platform.biomeCount();
-            this.scheduler.sync().runDelayed(() -> {
+            this.scheduler.platform().runDelayed(() -> {
                 if (biomeCount != this.platform.biomeCount()) {
                     ((AbstractBlockManager) this.blockManager).registerBlockStatePacketListener();
                 }
@@ -463,6 +491,7 @@ public abstract class CraftEngine implements Plugin {
     }
 
     protected void onPluginDisable() {
+        this.isStopping = true;
         if (this.networkManager != null) this.networkManager.disable();
         if (this.fontManager != null) this.fontManager.disable();
         if (this.advancementManager != null) this.advancementManager.disable();
@@ -476,6 +505,8 @@ public abstract class CraftEngine implements Plugin {
         if (this.itemBrowserManager != null) this.itemBrowserManager.disable();
         if (this.guiManager != null) this.guiManager.disable();
         if (this.soundManager != null) this.soundManager.disable();
+        if (this.paintingManager != null) this.paintingManager.disable();
+        if (this.proxyMessageManager != null) this.proxyMessageManager.disable();
         if (this.lootManager != null) this.lootManager.disable();
         if (this.seatManager != null) this.seatManager.disable();
         if (this.translationManager != null) this.translationManager.disable();
@@ -487,6 +518,8 @@ public abstract class CraftEngine implements Plugin {
         if (this.commandManager != null) this.commandManager.unregisterFeatures();
         if (this.senderFactory != null) this.senderFactory.close();
         if (this.dependencyManager != null) this.dependencyManager.close();
+        this.isStopping = false;
+        this.isDisabled = true;
     }
 
     protected void registerDefaultParsers() {
@@ -516,6 +549,8 @@ public abstract class CraftEngine implements Plugin {
         this.packManager.registerConfigSectionParser(this.packManager.parser());
         // register feature parser
         this.packManager.registerConfigSectionParsers(this.worldManager.parsers());
+        // register painting parser
+        this.packManager.registerConfigSectionParser(this.paintingManager.parser());
     }
 
     public void applyDependencies() {
@@ -545,7 +580,6 @@ public abstract class CraftEngine implements Plugin {
                 Dependencies.SNAKE_YAML,
                 Dependencies.BOOSTED_YAML,
                 Dependencies.OPTION,
-                Dependencies.EXAMINATION_API, Dependencies.EXAMINATION_STRING,
                 Dependencies.ADVENTURE_KEY, Dependencies.ADVENTURE_API, Dependencies.ADVENTURE_NBT,
                 Dependencies.MINIMESSAGE,
                 Dependencies.TEXT_SERIALIZER_COMMONS, Dependencies.TEXT_SERIALIZER_LEGACY, Dependencies.TEXT_SERIALIZER_GSON, Dependencies.TEXT_SERIALIZER_GSON_LEGACY, Dependencies.TEXT_SERIALIZER_JSON,
@@ -558,10 +592,9 @@ public abstract class CraftEngine implements Plugin {
         );
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <W> SchedulerAdapter<W> scheduler() {
-        return (SchedulerAdapter<W>) this.scheduler;
+    public SchedulerAdapter scheduler() {
+        return this.scheduler;
     }
 
     @Override
@@ -592,6 +625,16 @@ public abstract class CraftEngine implements Plugin {
     @Override
     public boolean isInitializing() {
         return this.isInitializing;
+    }
+
+    @Override
+    public boolean isStopping() {
+        return this.isStopping;
+    }
+
+    @Override
+    public boolean isDisabled() {
+        return this.isDisabled;
     }
 
     @Override
@@ -706,8 +749,18 @@ public abstract class CraftEngine implements Plugin {
     }
 
     @Override
+    public PaintingManager paintingManager() {
+        return this.paintingManager;
+    }
+
+    @Override
     public SeatManager seatManager() {
         return this.seatManager;
+    }
+
+    @Override
+    public ProxyMessageManager proxyMessageManager() {
+        return this.proxyMessageManager;
     }
 
     @Override
@@ -724,7 +777,7 @@ public abstract class CraftEngine implements Plugin {
      */
     @ApiStatus.Experimental
     public PluginTaskRegistry beforeEnableTaskRegistry() {
-        return this.beforeEnableTaskRegistry;
+        return this.preEnableTaskRegistry;
     }
 
     /**
@@ -736,6 +789,6 @@ public abstract class CraftEngine implements Plugin {
      */
     @ApiStatus.Experimental
     public PluginTaskRegistry afterEnableTaskRegistry() {
-        return this.afterEnableTaskRegistry;
+        return this.postEnableTaskRegistry;
     }
 }

@@ -1,13 +1,13 @@
 package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
-import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemsProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelAccessorProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidStateProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidsProxy;
@@ -22,9 +22,9 @@ public class WaterloggedBlockBehavior extends BukkitBlockBehavior implements Buk
         this.waterloggedProperty = waterloggedProperty;
     }
 
-    private static final int pickupBlock$world = VersionHelper.isOrAbove1_20_2() ? 1 : 0;
-    private static final int pickupBlock$pos = VersionHelper.isOrAbove1_20_2() ? 2 : 1;
-    private static final int pickupBlock$blockState = VersionHelper.isOrAbove1_20_2() ? 3 : 2;
+    private static final int pickupBlock$world = VersionHelper.isOrAbove1_20_2 ? 1 : 0;
+    private static final int pickupBlock$pos = VersionHelper.isOrAbove1_20_2 ? 2 : 1;
+    private static final int pickupBlock$blockState = VersionHelper.isOrAbove1_20_2 ? 3 : 2;
 
     @Override
     public Object pickupBlock(Object thisBlock, Object[] args) {
@@ -50,13 +50,13 @@ public class WaterloggedBlockBehavior extends BukkitBlockBehavior implements Buk
         Object fluidType = FluidStateProxy.INSTANCE.getType(args[3]);
         if (!immutableBlockState.get(this.waterloggedProperty) && fluidType == FluidsProxy.WATER) {
             LevelWriterProxy.INSTANCE.setBlock(args[0], args[1], immutableBlockState.with(this.waterloggedProperty, true).customBlockState().minecraftState(), 3);
-            LevelUtils.scheduleFluidTick(args[0], args[1], fluidType, 5);
+            LevelAccessorProxy.INSTANCE.scheduleTick$1(args[0], args[1], fluidType, 5);
             return true;
         }
         return false;
     }
 
-    private static final int canPlaceLiquid$liquid = VersionHelper.isOrAbove1_20_2() ? 4 : 3;
+    private static final int canPlaceLiquid$liquid = VersionHelper.isOrAbove1_20_2 ? 4 : 3;
 
     @Override
     public boolean canPlaceLiquid(Object thisBlock, Object[] args) {

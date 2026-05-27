@@ -49,6 +49,7 @@ public final class ItemSettings {
     LegacyChatFormatter glowColor = null;
     Map<CustomItemSettingType<?>, Object> customData = new IdentityHashMap<>(4);
     boolean triggerAdvancement = false;
+    Set<Key> allowedProjectiles = Set.of();
 
     private ItemSettings() {}
 
@@ -65,7 +66,7 @@ public final class ItemSettings {
                 processors.addAll(this.equipment.equipment().modifiers());
             }
         }
-        if (VersionHelper.isOrAbove1_20_5() && this.foodData != null) {
+        if (VersionHelper.isOrAbove1_20_5 && this.foodData != null) {
             processors.add(new FoodProcessor(this.foodData.nutrition(), this.foodData.saturation(), false));
         }
         for (Map.Entry<CustomItemSettingType<?>, Object> entry : this.customData.entrySet()) {
@@ -95,7 +96,7 @@ public final class ItemSettings {
     }
 
     public void lateInit() {
-        if (VersionHelper.isOrAbove26_1() && this.dyeColor != null) {
+        if (VersionHelper.isOrAbove26_1 && this.dyeColor != null) {
             Key dyesTag = Key.of("minecraft:dyes");
             if (this.tags.isEmpty()) {
                 this.tags = Set.of(dyesTag);
@@ -297,6 +298,10 @@ public final class ItemSettings {
         return this.fuelRemainder;
     }
 
+    public Set<Key> allowedProjectiles() {
+        return this.allowedProjectiles;
+    }
+
     public ItemSettings fireworkColor(Color color) {
         this.fireworkColor = color;
         return this;
@@ -424,6 +429,11 @@ public final class ItemSettings {
 
     public ItemSettings fuelRemainder(Key fuelRemainder) {
         this.fuelRemainder = fuelRemainder;
+        return this;
+    }
+
+    public ItemSettings allowedProjectiles(Set<Key> allowedProjectiles) {
+        this.allowedProjectiles = allowedProjectiles;
         return this;
     }
 }

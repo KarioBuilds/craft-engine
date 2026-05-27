@@ -2,8 +2,10 @@ package net.momirealms.craftengine.bukkit.plugin.network.id;
 
 import net.momirealms.craftengine.core.plugin.network.ConnectionState;
 import net.momirealms.craftengine.core.plugin.network.PacketFlow;
+import net.momirealms.craftengine.core.plugin.network.id.PacketIds;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.common.*;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.configuration.ClientboundFinishConfigurationPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.configuration.ClientboundRegistryDataPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.configuration.ServerboundFinishConfigurationPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.*;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.handshake.ClientIntentionPacketProxy;
@@ -12,9 +14,10 @@ import net.momirealms.craftengine.proxy.minecraft.network.protocol.login.Serverb
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.login.ServerboundLoginAcknowledgedPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.status.ClientboundStatusResponsePacketProxy;
 
-final class PacketIds1_20 implements PacketIds {
+public final class PacketIds1_20 implements PacketIds {
+    public static final PacketIds INSTANCE = new PacketIds1_20();
 
-    PacketIds1_20() {}
+    private PacketIds1_20() {}
 
     @Override
     public int clientboundBlockUpdatePacket() {
@@ -383,5 +386,20 @@ final class PacketIds1_20 implements PacketIds {
     @Override
     public int serverboundClientInformationPacket$configuration() {
         return PacketIdHelper.byClazz(ServerboundClientInformationPacketProxy.CLASS, ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+    }
+
+    @Override
+    public int clientboundRegistryDataPacket() {
+        return PacketIdHelper.byClazz(ClientboundRegistryDataPacketProxy.CLASS, ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+    }
+
+    @Override
+    public int clientboundShowDialogPacket$play() {
+        return -1;
+    }
+
+    @Override
+    public int clientboundShowDialogPacket$configuration() {
+        return -1;
     }
 }

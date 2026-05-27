@@ -3,7 +3,6 @@ package net.momirealms.craftengine.core.item;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.behavior.ItemBehavior;
 import net.momirealms.craftengine.core.item.equipment.Equipment;
-import net.momirealms.craftengine.core.item.network.NetworkItemHandler;
 import net.momirealms.craftengine.core.item.recipe.DatapackRecipeResult;
 import net.momirealms.craftengine.core.item.updater.ItemUpdateResult;
 import net.momirealms.craftengine.core.pack.model.definition.ModernItemModel;
@@ -13,7 +12,9 @@ import net.momirealms.craftengine.core.plugin.Manageable;
 import net.momirealms.craftengine.core.plugin.config.ConfigParser;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.UniqueKey;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import org.incendo.cloud.suggestion.Suggestion;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,17 +23,9 @@ import java.util.function.Supplier;
 
 public interface ItemManager extends Manageable, ModelGenerator {
 
-    Map<Key, Equipment> equipments();
-
     ConfigParser[] parsers();
 
-    Map<Key, TreeSet<LegacyOverridesModel>> legacyItemOverrides();
-
-    Map<Key, TreeMap<Integer, ModernItemModel>> modernItemOverrides();
-
-    Map<Key, ModernItemModel> modernItemModels1_21_4();
-
-    Map<Key, TreeSet<LegacyOverridesModel>> modernItemModels1_21_2();
+    Map<Key, Equipment> equipments();
 
     Collection<Key> vanillaItems();
 
@@ -45,14 +38,13 @@ public interface ItemManager extends Manageable, ModelGenerator {
     @NotNull
     Item wrap(Object itemStack);
 
-    Item fromByteArray(byte[] bytes);
+    Item fromBytes(byte[] bytes);
+
+    Item fromNBT(CompoundTag tag);
 
     Map<Key, ItemDefinition> loadedItems();
 
-    @Deprecated(forRemoval = true)
-    default Collection<Key> items() {
-        return loadedItems().keySet();
-    }
+    List<Key> orderedItemIds();
 
     Optional<Equipment> getEquipment(Key key);
 
@@ -64,8 +56,6 @@ public interface ItemManager extends Manageable, ModelGenerator {
 
     UniqueKey getIngredientKey(Item item);
 
-    NetworkItemHandler networkItemHandler();
-
     default Optional<? extends BuildableItem> getBuildableItem(Key key) {
         Optional<ItemDefinition> item = getItemDefinition(key);
         if (item.isPresent()) {
@@ -74,7 +64,7 @@ public interface ItemManager extends Manageable, ModelGenerator {
         return getVanillaItem(key);
     }
 
-    Optional<ItemDefinition> getCustomItemByPathOnly(String path);
+    Optional<ItemDefinition> getItemDefinitionByPath(String path);
 
     default List<UniqueKey> itemIdsByTag(Key tag) {
         List<UniqueKey> items = new ArrayList<>();
@@ -86,14 +76,6 @@ public interface ItemManager extends Manageable, ModelGenerator {
     List<UniqueKey> vanillaItemIdsByTag(Key tag);
 
     List<UniqueKey> customItemIdsByTag(Key tag);
-
-    int getFuelTime(Key id);
-
-    Collection<Key> itemTags();
-
-    Collection<Suggestion> cachedCustomItemSuggestions();
-
-    Collection<Suggestion> cachedTotemSuggestions();
 
     boolean isVanillaItem(Key item);
 
@@ -110,4 +92,24 @@ public interface ItemManager extends Manageable, ModelGenerator {
     ItemUpdateResult updateItem(Item item, Supplier<ItemBuildContext> contextSupplier);
 
     Item emptyItem();
+
+    @ApiStatus.Internal
+    Collection<Suggestion> cachedCustomItemSuggestions();
+
+    @ApiStatus.Internal
+    Collection<Suggestion> cachedTotemSuggestions();
+
+    Set<Key> getVanillaItemTags(Key item);
+
+    @ApiStatus.Internal
+    Map<Key, TreeSet<LegacyOverridesModel>> legacyItemOverrides();
+
+    @ApiStatus.Internal
+    Map<Key, TreeMap<Integer, ModernItemModel>> modernItemOverrides();
+
+    @ApiStatus.Internal
+    Map<Key, ModernItemModel> modernItemModels1_21_4();
+
+    @ApiStatus.Internal
+    Map<Key, TreeSet<LegacyOverridesModel>> modernItemModels1_21_2();
 }

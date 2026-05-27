@@ -116,7 +116,7 @@ public final class ItemSettingsModifiers {
         if (optionalEquipment.isEmpty()) {
             throw new KnownResourceException("resource.item.settings.equipment.invalid_asset_id", value.assemblePath("asset_id"), assetId.asString());
         }
-        if (VersionHelper.isOrAbove1_21_2() && section.containsKey("slot")) {
+        if (VersionHelper.isOrAbove1_21_2 && section.containsKey("slot")) {
             if (optionalEquipment.get() instanceof ComponentBasedEquipment) {
                 // 基于组件
                 EquipmentData data = EquipmentData.fromConfig(section);
@@ -181,6 +181,10 @@ public final class ItemSettingsModifiers {
     public static final ItemSettingsModifierType<ItemSettingsModifier> FUEL_REMAINDER = register(Key.ce("fuel_remainder"), (value -> settings -> {
         Key itemId = value.getAsIdentifier();
         settings.fuelRemainder(itemId);
+    }));
+    public static final ItemSettingsModifierType<ItemSettingsModifier> ALLOWED_PROJECTILES = register(Key.ce("allowed_projectiles"), (value -> settings -> {
+        List<Key> list = value.getAsList(ConfigValue::getAsIdentifier);
+        settings.allowedProjectiles(new HashSet<>(list));
     }));
 
     private ItemSettingsModifiers() {}

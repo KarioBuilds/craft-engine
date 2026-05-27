@@ -14,6 +14,7 @@ import net.momirealms.craftengine.core.item.equipment.ComponentBasedEquipment;
 import net.momirealms.craftengine.core.item.equipment.Equipment;
 import net.momirealms.craftengine.core.item.equipment.EquipmentLayerType;
 import net.momirealms.craftengine.core.item.equipment.TrimBasedEquipment;
+import net.momirealms.craftengine.core.item.processor.ObfuscatedItemModelProcessor;
 import net.momirealms.craftengine.core.pack.atlas.Atlas;
 import net.momirealms.craftengine.core.pack.atlas.SimplifiedModelFile;
 import net.momirealms.craftengine.core.pack.atlas.TextureStatus;
@@ -158,7 +159,7 @@ public abstract class AbstractPackManager implements PackManager {
         try {
             if (Files.notExists(resourcesFolder)) {
                 Files.createDirectories(resourcesFolder);
-                this.saveDefaultConfigs();
+                this.saveDefaultConfigs("");
             }
         } catch (IOException e) {
             this.plugin.logger().warn("Failed to create default configs folder", e);
@@ -284,6 +285,7 @@ public abstract class AbstractPackManager implements PackManager {
 
     @Override
     public void load() {
+        this.plugin.networkManager().setServerPortHost(null);
         Object hostingObj = Config.instance().settings().get("resource-pack.delivery.hosting");
         if (hostingObj == null) {
             this.resourcePackHost = NoneHost.INSTANCE;
@@ -395,7 +397,7 @@ public abstract class AbstractPackManager implements PackManager {
         try {
             if (Files.notExists(resourcesFolder)) {
                 Files.createDirectories(resourcesFolder);
-                this.saveDefaultConfigs();
+                this.saveDefaultConfigs("");
             }
         } catch (IOException e) {
             this.plugin.logger().error("Error saving default configs", e);
@@ -465,8 +467,8 @@ public abstract class AbstractPackManager implements PackManager {
         }
     }
 
-    public void saveDefaultConfigs() throws IOException {
-        saveFileByIndexFile("resources");
+    public void saveDefaultConfigs(String path) throws IOException {
+        saveFileByIndexFile("resources" + path);
     }
 
     private void saveFileByIndexFile(String path) throws IOException {
@@ -661,6 +663,7 @@ public abstract class AbstractPackManager implements PackManager {
     public void generateResourcePack() {
         this.plugin.logger().info(TranslationManager.instance().plainTranslation("resource_pack.generation_started"));
         Timestamp timestamp = new Timestamp();
+        ObfuscatedItemModelProcessor.resetMappings();
 
         // Create cache data
         PackCacheData cacheData = new PackCacheData(this.plugin);
@@ -766,6 +769,10 @@ public abstract class AbstractPackManager implements PackManager {
                 this.plugin.logger().info(TranslationManager.instance().plainTranslation("resource_pack.optimization_finished", String.valueOf(timestamp.deltaMillis())));
             }
 
+            if (Config.enablePackSquash()) {
+
+            }
+
             this.plugin.logger().info(TranslationManager.instance().plainTranslation("resource_pack.compression_started"));
             Path finalPath = resourcePackPath();
             Files.createDirectories(finalPath.getParent());
@@ -794,7 +801,7 @@ public abstract class AbstractPackManager implements PackManager {
         }
     }
 
-    private void validatePackMetadata(JsonObject rawMeta, Overlays packOverlays) throws IOException {
+    private void validatePackMetadata(JsonObject rawMeta, Overlays packOverlays) {
         // 获取设定的最大和最小值
         PackVersion minVersion = Config.packMinVersion().packFormat();
         PackVersion maxVersion = Config.packMaxVersion().packFormat();
@@ -1779,7 +1786,7 @@ public abstract class AbstractPackManager implements PackManager {
                                 } else {
                                     if (!status.inBlockAtlas() && notInAtlasTextures.add(spritePath)) {
                                         this.plugin.logger().warn(TranslationManager.instance().plainTranslation(
-                                                "warning.config.resource_pack.generation.texture_not_in_atlas",
+                                                "resource_pack.texture_not_in_atlas",
                                                 spritePath.asString()
                                         ));
                                     }
@@ -3070,7 +3077,7 @@ public abstract class AbstractPackManager implements PackManager {
                 ImmutableBlockState state = this.plugin.blockManager().getImmutableBlockStateUnsafe(entry.getKey() + vanillaBlockStateCount);
                 this.plugin.compatibilityManager().blueMapBlockColors(state, blueMapBlockStates::add);
             }
-            if (!blueMapBlockStates.isEmpty()) {
+            if (!blueMapBlockStates.asMap().isEmpty()) {
                 writeJsonSafely(blueMapBlockStates, generatedPackPath.resolve("assets").resolve(Key.CRAFTENGINE_NAMESPACE).resolve("blockColors.json"));
             }
         }

@@ -30,11 +30,12 @@ public final class BukkitVariantSnapshot extends FurnitureSnapshotState {
     public void addCollidersToWorld(World cWorld) {
         Object world = cWorld.minecraftWorld();
         for (Collider entity : super.colliders) {
-            Entity bukkitEntity = EntityProxy.INSTANCE.getBukkitEntity(entity.handle());
+            Object minecraftEntity = entity.handle();
+            Entity bukkitEntity = EntityProxy.INSTANCE.getBukkitEntity(minecraftEntity);
             bukkitEntity.getPersistentDataContainer().set(BukkitFurnitureManager.FURNITURE_COLLISION, PersistentDataType.BYTE, (byte) 1);
             bukkitEntity.setPersistent(false);
             if (!bukkitEntity.isValid()) {
-                LevelWriterProxy.INSTANCE.addFreshEntity(world, entity.handle(), CreatureSpawnEvent.SpawnReason.CUSTOM);
+                LevelWriterProxy.INSTANCE.addFreshEntity(world, minecraftEntity, CreatureSpawnEvent.SpawnReason.CUSTOM);
             }
         }
     }

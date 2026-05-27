@@ -11,6 +11,7 @@ import net.momirealms.craftengine.core.item.ItemManager;
 import net.momirealms.craftengine.core.item.recipe.RecipeManager;
 import net.momirealms.craftengine.core.loot.LootManager;
 import net.momirealms.craftengine.core.pack.PackManager;
+import net.momirealms.craftengine.core.painting.PaintingManager;
 import net.momirealms.craftengine.core.plugin.classpath.ClassPathAppender;
 import net.momirealms.craftengine.core.plugin.command.sender.SenderFactory;
 import net.momirealms.craftengine.core.plugin.compatibility.CompatibilityManager;
@@ -23,6 +24,7 @@ import net.momirealms.craftengine.core.plugin.gui.category.ItemBrowserManager;
 import net.momirealms.craftengine.core.plugin.locale.TranslationManager;
 import net.momirealms.craftengine.core.plugin.logger.PluginLogger;
 import net.momirealms.craftengine.core.plugin.network.NetworkManager;
+import net.momirealms.craftengine.core.plugin.proxy.ProxyMessageManager;
 import net.momirealms.craftengine.core.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.craftengine.core.sound.SoundManager;
 import net.momirealms.craftengine.core.world.WorldManager;
@@ -50,9 +52,13 @@ public interface Plugin {
 
     boolean isInitializing();
 
+    boolean isStopping();
+
+    boolean isDisabled();
+
     DependencyManager dependencyManager();
 
-    <W> SchedulerAdapter<W> scheduler();
+    SchedulerAdapter scheduler();
 
     void saveResource(String filePath);
 
@@ -60,7 +66,7 @@ public interface Plugin {
 
     String serverVersion();
 
-    <T> ItemManager itemManager();
+    ItemManager itemManager();
 
     BlockManager blockManager();
 
@@ -80,7 +86,7 @@ public interface Plugin {
 
     PackManager packManager();
 
-    <T> RecipeManager recipeManager();
+    RecipeManager recipeManager();
 
     <P extends Plugin, C> SenderFactory<P, C> senderFactory();
 
@@ -104,7 +110,11 @@ public interface Plugin {
 
     TeamManager teamManager();
 
+    PaintingManager paintingManager();
+
     SeatManager seatManager();
+
+    ProxyMessageManager proxyMessageManager();
 
     Platform platform();
 }

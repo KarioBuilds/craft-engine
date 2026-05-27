@@ -28,9 +28,6 @@ import net.momirealms.craftengine.core.item.processor.ItemProcessor;
 import net.momirealms.craftengine.core.item.processor.ItemProcessorType;
 import net.momirealms.craftengine.core.item.recipe.Recipe;
 import net.momirealms.craftengine.core.item.recipe.RecipeSerializer;
-import net.momirealms.craftengine.core.item.recipe.network.legacy.LegacyRecipe;
-import net.momirealms.craftengine.core.item.recipe.network.modern.display.RecipeDisplay;
-import net.momirealms.craftengine.core.item.recipe.network.modern.display.slot.SlotDisplay;
 import net.momirealms.craftengine.core.item.recipe.remainder.CraftRemainder;
 import net.momirealms.craftengine.core.item.recipe.remainder.CraftRemainderType;
 import net.momirealms.craftengine.core.item.recipe.result.PostProcessor;
@@ -74,9 +71,18 @@ import net.momirealms.craftengine.core.plugin.context.function.Function;
 import net.momirealms.craftengine.core.plugin.context.number.NumberProvider;
 import net.momirealms.craftengine.core.plugin.context.number.NumberProviderType;
 import net.momirealms.craftengine.core.plugin.context.selector.PlayerSelectorType;
-import net.momirealms.craftengine.core.plugin.network.codec.NetworkCodec;
-import net.momirealms.craftengine.core.plugin.network.mod.ModPacket;
-import net.momirealms.craftengine.core.util.FriendlyByteBuf;
+import net.momirealms.craftengine.core.plugin.network.mod.ClientCustomPacket;
+import net.momirealms.craftengine.core.plugin.network.mod.ClientCustomPacketType;
+import net.momirealms.craftengine.core.plugin.network.mod.ServerCustomPacket;
+import net.momirealms.craftengine.core.plugin.network.mod.ServerCustomPacketType;
+import net.momirealms.craftengine.core.plugin.network.protocol.chat.ClickEvent;
+import net.momirealms.craftengine.core.plugin.network.protocol.dialog.Dialog;
+import net.momirealms.craftengine.core.plugin.network.protocol.dialog.action.DialogAction;
+import net.momirealms.craftengine.core.plugin.network.protocol.dialog.body.DialogBody;
+import net.momirealms.craftengine.core.plugin.network.protocol.dialog.input.DialogInputControl;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.legacy.LegacyRecipe;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.modern.display.RecipeDisplay;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.modern.display.slot.SlotDisplay;
 import net.momirealms.craftengine.core.util.ResourceKey;
 
 import java.util.function.Supplier;
@@ -110,7 +116,8 @@ public final class BuiltInRegistries {
     public static final Registry<LegacyRecipe.Type<? extends LegacyRecipe>> LEGACY_RECIPE_TYPE = createConstantBoundRegistry(Registries.LEGACY_RECIPE_TYPE, 16);
     public static final Registry<PostProcessorType<? extends PostProcessor>> RECIPE_POST_PROCESSOR_TYPE = createConstantBoundRegistry(Registries.RECIPE_POST_PROCESSOR_TYPE, 16);
     public static final Registry<ItemUpdaterType<? extends ItemUpdater>> ITEM_UPDATER_TYPE = createConstantBoundRegistry(Registries.ITEM_UPDATER_TYPE, 16);
-    public static final Registry<NetworkCodec<FriendlyByteBuf, ? extends ModPacket>> MOD_PACKET = createConstantBoundRegistry(Registries.MOD_PACKET, 16);
+    public static final Registry<ClientCustomPacketType<? extends ClientCustomPacket>> CLIENT_MOD_PACKET = createConstantBoundRegistry(Registries.CLIENT_MOD_PACKET, 16);
+    public static final Registry<ServerCustomPacketType<? extends ServerCustomPacket>> SERVER_MOD_PACKET = createConstantBoundRegistry(Registries.SERVER_MOD_PACKET, 16);
     public static final Registry<BlockEntityElementConfigType<? extends BlockEntityElement>> BLOCK_ENTITY_ELEMENT_TYPE = createConstantBoundRegistry(Registries.BLOCK_ENTITY_ELEMENT_TYPE, 16);
     public static final Registry<CraftRemainderType<? extends CraftRemainder>> CRAFT_REMAINDER_TYPE = createConstantBoundRegistry(Registries.CRAFT_REMAINDER_TYPE, 16);
     public static final Registry<FurnitureElementConfigType<? extends FurnitureElement>> FURNITURE_ELEMENT_TYPE = createConstantBoundRegistry(Registries.FURNITURE_ELEMENT_TYPE, 16);
@@ -122,6 +129,12 @@ public final class BuiltInRegistries {
     public static final Registry<ItemSettingsModifierType<? extends ItemSettingsModifier>> ITEM_SETTINGS_TYPE = createConstantBoundRegistry(Registries.ITEM_SETTINGS_TYPE, 16);
     public static final Registry<LootFunctionType<? extends LootFunction>> LOOT_FUNCTION_TYPE = createConstantBoundRegistry(Registries.LOOT_FUNCTION_TYPE, 32);
     public static final Registry<LootEntryContainerType<? extends LootEntryContainer>> LOOT_ENTRY_CONTAINER_TYPE = createConstantBoundRegistry(Registries.LOOT_ENTRY_CONTAINER_TYPE, 16);
+    public static final Registry<Dialog.Type<? extends Dialog>> DIALOG_TYPE = createConstantBoundRegistry(Registries.DIALOG_TYPE, 16);
+    public static final Registry<DialogBody.Type<? extends DialogBody>> DIALOG_BODY_TYPE = createConstantBoundRegistry(Registries.DIALOG_BODY_TYPE, 8);
+    public static final Registry<DialogAction.Type<? extends DialogAction>> DIALOG_ACTION_TYPE = createConstantBoundRegistry(Registries.DIALOG_ACTION_TYPE, 8);
+    public static final Registry<DialogInputControl.Type<? extends DialogInputControl>> DIALOG_INPUT_CONTROL_TYPE = createConstantBoundRegistry(Registries.DIALOG_INPUT_CONTROL_TYPE, 8);
+    public static final Registry<ClickEvent.Type<? extends ClickEvent>> CLICK_EVENT_TYPE = createConstantBoundRegistry(Registries.CLICK_EVENT_TYPE, 16);
+
     // todo 修改
     public static final Registry<PlayerSelectorType<? extends Context>> PLAYER_SELECTOR_TYPE = createConstantBoundRegistry(Registries.PLAYER_SELECTOR_TYPE, 16);
 

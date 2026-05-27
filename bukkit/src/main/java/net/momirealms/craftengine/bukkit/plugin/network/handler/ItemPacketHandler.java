@@ -3,9 +3,10 @@ package net.momirealms.craftengine.bukkit.plugin.network.handler;
 import com.google.common.collect.ImmutableList;
 import net.kyori.adventure.text.Component;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
-import net.momirealms.craftengine.bukkit.entity.data.ItemEntityData;
+import net.momirealms.craftengine.bukkit.entity.data.item.ItemEntityData;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ComponentUtils;
+import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.bukkit.world.score.BukkitTeamManager;
@@ -50,7 +51,7 @@ public final class ItemPacketHandler implements EntityPacketHandler {
             Object packedItem = packedItems.get(i);
             int entityDataId = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getId(packedItem);
             if (entityDataId == ItemEntityData.Item.id()) {
-                Object nmsItemStack = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+                Object nmsItemStack = EntityUtils.getEntityDataValue(packedItem, ItemEntityData.Item);
                 ItemStack itemStack = ItemStackUtils.getBukkitStack(nmsItemStack);
 
                 // 转换为客户端侧物品
@@ -109,7 +110,7 @@ public final class ItemPacketHandler implements EntityPacketHandler {
                         Object packedItem = packedItems.get(i);
                         int entityDataId = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getId(packedItem);
                         if (entityDataId == BaseEntityData.SharedFlags.id()) {
-                            byte flags = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+                            byte flags = EntityUtils.getEntityDataValue(packedItem, BaseEntityData.SharedFlags);
                             flags |= (byte) 0x40;
                             packedItems.set(i, BaseEntityData.SharedFlags.createEntityData(flags));
                             break outer;
@@ -119,7 +120,7 @@ public final class ItemPacketHandler implements EntityPacketHandler {
                 }
                 Object level = user.clientSideWorld().minecraftWorld();
                 Object entityLookup;
-                if (VersionHelper.isOrAbove1_21()) {
+                if (VersionHelper.isOrAbove1_21) {
                     entityLookup = LevelProxy.INSTANCE.moonrise$getEntityLookup(level);
                 } else {
                     entityLookup = ServerLevelProxy.INSTANCE.getEntityLookup(level);

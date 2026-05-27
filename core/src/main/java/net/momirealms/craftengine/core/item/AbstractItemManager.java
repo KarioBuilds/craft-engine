@@ -44,18 +44,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public abstract class AbstractItemManager extends AbstractModelGenerator implements ItemManager {
     protected static final Map<Key, ItemBehavior> VANILLA_ITEM_EXTRA_BEHAVIORS = new HashMap<>();
-    protected static final Set<Key> VANILLA_ITEMS = new HashSet<>(1024);
-    protected static final Map<Key, List<UniqueKey>> VANILLA_ITEM_TAGS = new HashMap<>();
+    protected static final Map<Key, Set<Key>> VANILLA_ITEM_TO_TAGS = new HashMap<>(1024);
+    protected static final Map<Key, List<UniqueKey>> VANILLA_TAG_TO_ITEMS = new HashMap<>();
     // 解析器
     private final ItemParser itemParser;
     private final EquipmentParser equipmentParser;
     // 缓存
-    protected final Map<Key, ItemDefinition> customItemsById = new ConcurrentHashMap<>();
-    protected final Map<String, ItemDefinition> customItemsByPath = new ConcurrentHashMap<>();
+    protected final Map<Key, ItemDefinition> itemDefinitionById = new ConcurrentHashMap<>();
+    protected final Map<String, ItemDefinition> itemDefinitionByPath = new ConcurrentHashMap<>();
     protected final Map<Key, List<UniqueKey>> customItemTags = new HashMap<>();
     protected final Map<Key, ModernItemModel> modernItemModels1_21_4 = new ConcurrentHashMap<>();
     protected final Map<Key, TreeSet<LegacyOverridesModel>> modernItemModels1_21_2 = new ConcurrentHashMap<>();
@@ -73,6 +74,9 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
     // 其他设置
     protected boolean featureFlag$keepOnDeathChance = false;
     protected boolean featureFlag$destroyOnDeathChance = false;
+    // 用语弩和弓的弹药判定
+    protected final ProjectilePredicate ARROW_ONLY = new ProjectilePredicate(k -> k.hasVanillaTag(ItemTags.ARROWS));
+    protected final ProjectilePredicate ARROW_OR_FIREWORK = new ProjectilePredicate(k -> k.hasVanillaTag(ItemTags.ARROWS) || k.id().equals(ItemKeys.FIREWORK_ROCKET));
 
     protected AbstractItemManager(CraftEngine plugin) {
         super(plugin);
@@ -97,8 +101,8 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
     public void unload() {
         super.clearModelsToGenerate();
         this.clearFeatureFlags();
-        this.customItemsById.clear();
-        this.customItemsByPath.clear();
+        this.itemDefinitionById.clear();
+        this.itemDefinitionByPath.clear();
         this.cachedCustomItemSuggestions.clear();
         this.cachedTotemSuggestions.clear();
         this.legacyOverrides.clear();
@@ -117,6 +121,14 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
         this.featureFlag$destroyOnDeathChance = false;
     }
 
+    public boolean isCrossbowAmmo(Item item) {
+        return ARROW_OR_FIREWORK.testVanillaOnly(item);
+    }
+
+    public boolean isBowAmmo(Item item) {
+        return ARROW_ONLY.testVanillaOnly(item);
+    }
+
     @Override
     public Map<Key, Equipment> equipments() {
         return Collections.unmodifiableMap(this.equipments);
@@ -129,17 +141,17 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
 
     @Override
     public Optional<ItemDefinition> getItemDefinition(Key key) {
-        return Optional.ofNullable(this.customItemsById.get(key));
+        return Optional.ofNullable(this.itemDefinitionById.get(key));
     }
 
     @Override
-    public Optional<ItemDefinition> getCustomItemByPathOnly(String path) {
-        return Optional.ofNullable(this.customItemsByPath.get(path));
+    public Optional<ItemDefinition> getItemDefinitionByPath(String path) {
+        return Optional.ofNullable(this.itemDefinitionByPath.get(path));
     }
 
     @Override
     public List<UniqueKey> getIngredientSubstitutes(Key item) {
-        if (VANILLA_ITEMS.contains(item)) {
+        if (isVanillaItem(item)) {
             return Optional.ofNullable(this.ingredientSubstitutes.get(item)).orElse(Collections.emptyList());
         } else {
             return Collections.emptyList();
@@ -161,19 +173,12 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
 
     @Override
     public List<UniqueKey> vanillaItemIdsByTag(Key tag) {
-        return Collections.unmodifiableList(VANILLA_ITEM_TAGS.getOrDefault(tag, List.of()));
+        return Collections.unmodifiableList(VANILLA_TAG_TO_ITEMS.getOrDefault(tag, List.of()));
     }
 
     @Override
     public List<UniqueKey> customItemIdsByTag(Key tag) {
         return Collections.unmodifiableList(this.customItemTags.getOrDefault(tag, List.of()));
-    }
-
-    @Override
-    public Collection<Key> itemTags() {
-        Set<Key> tags = new HashSet<>(VANILLA_ITEM_TAGS.keySet());
-        tags.addAll(this.customItemTags.keySet());
-        return tags;
     }
 
     @Override
@@ -194,7 +199,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
 
     @Override
     public Map<Key, ItemDefinition> loadedItems() {
-        return Collections.unmodifiableMap(this.customItemsById);
+        return Collections.unmodifiableMap(this.itemDefinitionById);
     }
 
     public List<Key> orderedItemIds() {
@@ -213,7 +218,12 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
 
     @Override
     public Collection<Key> vanillaItems() {
-        return Collections.unmodifiableCollection(VANILLA_ITEMS);
+        return Collections.unmodifiableCollection(VANILLA_ITEM_TO_TAGS.keySet());
+    }
+
+    @Override
+    public Set<Key> getVanillaItemTags(Key item) {
+        return VANILLA_ITEM_TO_TAGS.getOrDefault(item, Collections.emptySet());
     }
 
     @Override
@@ -228,7 +238,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
 
     @Override
     public boolean isVanillaItem(Key item) {
-        return VANILLA_ITEMS.contains(item);
+        return VANILLA_ITEM_TO_TAGS.containsKey(item);
     }
 
     public boolean featureFlag$keepOnDeathChance() {
@@ -239,7 +249,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
         return featureFlag$destroyOnDeathChance;
     }
 
-    protected abstract ItemDefinition.Builder createPlatformItemBuilder(UniqueKey id, Key material, Key clientBoundMaterial);
+    protected abstract ItemDefinition.Builder createPlatformItemBuilder(String path, UniqueKey id, Key material, Key clientBoundMaterial);
 
     protected abstract void registerArmorTrimPattern(Collection<Key> equipments);
 
@@ -310,7 +320,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
 
         @Override
         public int count() {
-            return AbstractItemManager.this.customItemsById.size();
+            return AbstractItemManager.this.itemDefinitionById.size();
         }
 
         private boolean isModernFormatRequired() {
@@ -326,7 +336,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
         }
 
         private boolean needsItemModelCompatibility() {
-            return Config.packMaxVersion().isAtOrAbove(MinecraftVersion.V1_21_2) && VersionHelper.isOrAbove1_21_2(); //todo 能否通过客户端包解决问题
+            return Config.packMaxVersion().isAtOrAbove(MinecraftVersion.V1_21_2) && VersionHelper.isOrAbove1_21_2; //todo 能否通过客户端包解决问题
         }
 
         @Override
@@ -357,6 +367,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
             if (!this.futures.isEmpty()) {
                 this.futures.clear();
             }
+            ObfuscatedItemModelProcessor.CAN_OBF.clear();
         }
 
         @Override
@@ -385,9 +396,10 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
             // 获取有序的物品id
             int size = this.pendingConfigSections.size();
             Object[] pendingElements = this.pendingConfigSections.elements();
+            Set<Key> customProjectiles = new HashSet<>();
             for (int i = 0; i < size; i++) {
                 PendingConfigSection pending = (PendingConfigSection) pendingElements[i];
-                ItemDefinition itemDefinition = AbstractItemManager.this.customItemsById.get(pending.id);
+                ItemDefinition itemDefinition = AbstractItemManager.this.itemDefinitionById.get(pending.id);
                 if (itemDefinition != null) {
                     Key id = itemDefinition.id();
                     AbstractItemManager.this.orderedItemIds.add(id);
@@ -395,7 +407,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                     // cache command suggestions
                     AbstractItemManager.this.cachedCustomItemSuggestions.add(Suggestion.suggestion(id.asString()));
                     // totem animations
-                    if (VersionHelper.isOrAbove1_21_2()) {
+                    if (VersionHelper.isOrAbove1_21_2) {
                         AbstractItemManager.this.cachedTotemSuggestions.add(Suggestion.suggestion(id.asString()));
                     } else if (itemDefinition.material().equals(ItemKeys.TOTEM_OF_UNDYING)) {
                         AbstractItemManager.this.cachedTotemSuggestions.add(Suggestion.suggestion(id.asString()));
@@ -410,10 +422,15 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                     List<Key> substitutes = settings.ingredientSubstitutes();
                     if (!substitutes.isEmpty()) {
                         for (Key key : substitutes) {
-                            if (VANILLA_ITEMS.contains(key)) {
+                            if (isVanillaItem(key)) {
                                 AbstractItemManager.this.ingredientSubstitutes.computeIfAbsent(key, k -> new ArrayList<>()).add(itemDefinition.uniqueId());
                             }
                         }
+                    }
+                    // custom projectiles
+                    Set<Key> projectiles = settings.allowedProjectiles();
+                    if (!projectiles.isEmpty()) {
+                        customProjectiles.addAll(projectiles);
                     }
                     if (settings.keepOnDeathChance() != 0) {
                         AbstractItemManager.this.featureFlag$keepOnDeathChance = true;
@@ -423,12 +440,14 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                     }
                 }
             }
+            ARROW_ONLY.setDynamic(customProjectiles);
+            ARROW_OR_FIREWORK.setDynamic(customProjectiles);
         }
 
         // 创建或获取已有的自动分配器
         private synchronized IdAllocator getOrCreateIdAllocator(Key key) {
             return this.idAllocators.computeIfAbsent(key, k -> {
-                IdAllocator newAllocator = new IdAllocator(AbstractItemManager.this.plugin.dataFolderPath().resolve("cache").resolve("custom-model-data").resolve(k.value() + ".json"));
+                IdAllocator newAllocator = new IdAllocator(AbstractItemManager.this.plugin.dataFolderPath().resolve("cache").resolve("custom_model_data").resolve(k.value() + ".json"));
                 newAllocator.reset(Config.customModelDataStartingValue(k), 16_777_216);
                 try {
                     newAllocator.loadFromCache();
@@ -454,6 +473,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
         private static final String[] HAND_ANIMATION_ON_SWAP = new String[] {"hand_animation_on_swap", "hand-animation-on-swap"};
         private static final String[] SWAP_ANIMATION_SCALE = new String[] {"swap_animation_scale", "swap-animation-scale"};
         private static final String[] CATEGORIES = new String[] {"category", "categories"};
+        private static final String[] SKIP_OBFUSCATION = new String[] {"skip_obfuscation", "skip-obfuscation"};
 
         @Override
         public void parseSection(@NotNull Pack pack, @NotNull Path path, @NotNull Key id, @NotNull ConfigSection section) {
@@ -561,7 +581,7 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                 // 是否使用客户端侧模型
                 boolean clientBoundModel = VersionHelper.PREMIUM && section.getBoolean(CLIENT_BOUND_MODEL, Config.globalClientboundModel());
 
-                ItemDefinition.Builder itemBuilder = createPlatformItemBuilder(uniqueId, material, clientBoundMaterial);
+                ItemDefinition.Builder itemBuilder = createPlatformItemBuilder(section.path(), uniqueId, material, clientBoundMaterial);
 
                 // 模型配置区域，如果这里被配置了，那么用户可以配置custom-model-data或item-model
                 ConfigValue modelValue = section.getValue(MODEL);
@@ -574,7 +594,14 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                     else itemBuilder.dataProcessor(new CustomModelDataProcessor(ConstantNumberProvider.constant(customModelData)));
                 }
                 if (itemModel != null && (hasModelSection || forceItemModel)) {
-                    if (clientBoundModel) itemBuilder.clientBoundProcessor(Config.obfuscateItemModel() ? new ObfuscatedItemModelProcessor(itemModel) : new OverwritableItemModelProcessor(itemModel));
+                    if (clientBoundModel) {
+                        if (Config.obfuscateItemModel() && !section.getBoolean(SKIP_OBFUSCATION, false)) {
+                            itemBuilder.clientBoundProcessor(new ObfuscatedItemModelProcessor(itemModel));
+                            ObfuscatedItemModelProcessor.CAN_OBF.add(itemModel);
+                        } else {
+                            itemBuilder.clientBoundProcessor(new OverwritableItemModelProcessor(itemModel));
+                        }
+                    }
                     else itemBuilder.dataProcessor(new ItemModelProcessor(itemModel));
                 }
 
@@ -660,9 +687,9 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                         .events(events)
                         .build();
 
-                AbstractItemManager.this.customItemsById.put(id, itemDefinition);
-                AbstractItemManager.this.customItemsByPath.put(id.value(), itemDefinition);
-                if (VersionHelper.isOrAbove26_1() && settings.dyeable() == Tristate.TRUE) {
+                AbstractItemManager.this.itemDefinitionById.put(id, itemDefinition);
+                AbstractItemManager.this.itemDefinitionByPath.put(id.value(), itemDefinition);
+                if (VersionHelper.isOrAbove26_1 && settings.dyeable() == Tristate.TRUE) {
                     AbstractItemManager.this.dyeableItems.put(id, itemDefinition);
                 }
 
@@ -756,8 +783,8 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                                 }
                                 map.put(customModelData, new ModernItemModel(
                                         modernModel,
-                                        section.getBoolean(OVERSIZED_IN_GUI, true),
                                         section.getBoolean(HAND_ANIMATION_ON_SWAP, true),
+                                        section.getBoolean(OVERSIZED_IN_GUI, true),
                                         section.getFloat(SWAP_ANIMATION_SCALE, 1f)
                                 ));
                                 return map;
@@ -783,8 +810,8 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                         if (isModernFormatRequired() && hasModernModel) {
                             AbstractItemManager.this.modernItemModels1_21_4.put(itemModel, new ModernItemModel(
                                     modernModel,
-                                    section.getBoolean(OVERSIZED_IN_GUI, true),
                                     section.getBoolean(HAND_ANIMATION_ON_SWAP, true),
+                                    section.getBoolean(OVERSIZED_IN_GUI, true),
                                     section.getFloat(SWAP_ANIMATION_SCALE, 1f)
                             ));
                         }
@@ -804,8 +831,8 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
                     if (isModernFormatRequired()) {
                         AbstractItemManager.this.modernItemModels1_21_4.put(id, new ModernItemModel(
                                 modernModel,
-                                section.getBoolean(OVERSIZED_IN_GUI, true),
                                 section.getBoolean(HAND_ANIMATION_ON_SWAP, true),
+                                section.getBoolean(OVERSIZED_IN_GUI, true),
                                 section.getFloat(SWAP_ANIMATION_SCALE, 1f)
                         ));
                     }
@@ -1019,5 +1046,36 @@ public abstract class AbstractItemManager extends AbstractModelGenerator impleme
         if (newKey == null) return merged;
         merged.put(newKey, newValue);
         return merged;
+    }
+
+    public class ProjectilePredicate implements Predicate<Object> {
+        private final Predicate<Item> constant;
+        private Set<Key> dynamic;
+
+        public ProjectilePredicate(Predicate<Item> constant) {
+            this.constant = constant;
+            this.dynamic = Set.of();
+        }
+
+        public void setDynamic(Set<Key> dynamic) {
+            this.dynamic = dynamic;
+        }
+
+        public boolean testVanillaOnly(Item item) {
+            return this.constant.test(item);
+        }
+
+        @Override
+        public boolean test(Object o) {
+            Item wrap = wrap(o);
+            if (this.constant.test(wrap)) {
+                return true;
+            }
+            Key id = wrap.id();
+            if (this.dynamic.contains(id)) {
+                return true;
+            }
+            return false;
+        }
     }
 }

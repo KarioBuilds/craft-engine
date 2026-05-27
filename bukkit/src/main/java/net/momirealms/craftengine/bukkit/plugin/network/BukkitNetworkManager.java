@@ -2,6 +2,7 @@ package net.momirealms.craftengine.bukkit.plugin.network;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
+import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import io.netty.util.internal.logging.InternalLogger;
@@ -10,13 +11,12 @@ import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.command.feature.TotemAnimationCommand;
 import net.momirealms.craftengine.bukkit.plugin.network.id.PacketIdHelper;
-import net.momirealms.craftengine.bukkit.plugin.network.id.PacketIds;
-import net.momirealms.craftengine.bukkit.plugin.network.listener.common.ClientInformationListener;
-import net.momirealms.craftengine.bukkit.plugin.network.listener.common.CustomPayloadListener;
-import net.momirealms.craftengine.bukkit.plugin.network.listener.common.NMSResourcePackListener;
-import net.momirealms.craftengine.bukkit.plugin.network.listener.common.UpdateTagsListener;
+import net.momirealms.craftengine.bukkit.plugin.network.id.PacketIds1_20;
+import net.momirealms.craftengine.bukkit.plugin.network.id.PacketIds1_20_5;
+import net.momirealms.craftengine.bukkit.plugin.network.listener.common.*;
 import net.momirealms.craftengine.bukkit.plugin.network.listener.configuration.FinishConfigurationListener;
 import net.momirealms.craftengine.bukkit.plugin.network.listener.configuration.NMSFinishConfigurationListener;
+import net.momirealms.craftengine.bukkit.plugin.network.listener.configuration.RegistryDataListener;
 import net.momirealms.craftengine.bukkit.plugin.network.listener.game.*;
 import net.momirealms.craftengine.bukkit.plugin.network.listener.handshake.IntentionListener;
 import net.momirealms.craftengine.bukkit.plugin.network.listener.login.HelloListener;
@@ -34,15 +34,14 @@ import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.context.CooldownData;
 import net.momirealms.craftengine.core.plugin.logger.Debugger;
-import net.momirealms.craftengine.core.plugin.network.AbstractNetworkManager;
-import net.momirealms.craftengine.core.plugin.network.ConnectionState;
-import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
-import net.momirealms.craftengine.core.plugin.network.PacketFlow;
+import net.momirealms.craftengine.core.plugin.network.*;
 import net.momirealms.craftengine.core.plugin.network.event.ByteBufPacketEvent;
 import net.momirealms.craftengine.core.plugin.network.event.NMSPacketEvent;
+import net.momirealms.craftengine.core.plugin.network.id.PacketIds;
 import net.momirealms.craftengine.core.plugin.network.listener.ByteBufferPacketListener;
 import net.momirealms.craftengine.core.plugin.network.listener.ByteBufferPacketListenerHolder;
 import net.momirealms.craftengine.core.plugin.network.listener.NMSPacketListener;
+import net.momirealms.craftengine.core.plugin.network.mod.protocol.ClientboundCreativeModeTabItemsPacket;
 import net.momirealms.craftengine.core.util.*;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.craftengine.proxy.leaves.bot.BotListProxy;
@@ -81,10 +80,12 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public final class BukkitNetworkManager extends AbstractNetworkManager implements Listener {
-    private static final Map<Class<?>, NMSPacketListener> nmsPacketListeners = new IdentityHashMap<>(128);
+    public static final PacketIds PACKET_IDS = VersionHelper.isOrAbove1_20_5 ? PacketIds1_20_5.INSTANCE : PacketIds1_20.INSTANCE;
+    private static final ClassIdentityMap<NMSPacketListener> nmsPacketListeners = new ClassIdentityMap<>();
     private static final ByteBufferPacketListenerHolder[] s2cHandshakingPacketListeners = new ByteBufferPacketListenerHolder[PacketIdHelper.count(PacketFlow.CLIENTBOUND, ConnectionState.HANDSHAKING)];
     private static final ByteBufferPacketListenerHolder[] c2sHandshakingPacketListeners = new ByteBufferPacketListenerHolder[PacketIdHelper.count(PacketFlow.SERVERBOUND, ConnectionState.HANDSHAKING)];
     private static final ByteBufferPacketListenerHolder[] s2cStatusPacketListeners = new ByteBufferPacketListenerHolder[PacketIdHelper.count(PacketFlow.CLIENTBOUND, ConnectionState.STATUS)];
@@ -114,6 +115,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
     private static final String PLAYER_CHANNEL_HANDLER_NAME = "craftengine_player_channel_handler";
     private static final String PACKET_ENCODER = "craftengine_encoder";
     private static final String PACKET_DECODER = "craftengine_decoder";
+    private static final String HTTP_DECODER = "craftengine_http_decoder";
     private static BukkitNetworkManager instance;
     private final BukkitCraftEngine plugin;
     private final TriConsumer<ChannelHandler, Object, Object> packetConsumer;
@@ -127,6 +129,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
     private BukkitServerPlayer[] onlineUserArray = new BukkitServerPlayer[0];
     private int[] blockStateRemapper;
     private int[] modBlockStateRemapper;
+    private Consumer<ChannelPipeline> serverPortHost;
 
     public BukkitNetworkManager(BukkitCraftEngine plugin) {
         super(plugin);
@@ -136,7 +139,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
         // register packet handlers
         this.registerPacketListeners();
         // set up packet senders
-        this.packetConsumer = VersionHelper.isOrAbove1_21_6()
+        this.packetConsumer = VersionHelper.isOrAbove1_21_6
                 ? (target, packet, sendListener) -> ConnectionProxy.INSTANCE.send$0(target, packet, (ChannelFutureListener) sendListener)
                 : ConnectionProxy.INSTANCE::send$1;
         this.packetsConsumer = (connection, packets, sendListener) -> {
@@ -162,7 +165,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
             Object server = MinecraftServerProxy.INSTANCE.getServer();
             Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
             List<ChannelFuture> channels = ServerConnectionListenerProxy.INSTANCE.getChannels(serverConnection);
-            ListMonitor<ChannelFuture> monitor = new ListMonitor<>(channels, (future) -> {
+            ListListener<ChannelFuture> monitor = new ListListener<>(channels, (future) -> {
                 Channel channel = future.channel();
                 injectServerChannel(channel);
                 this.injectedChannels.add(channel);
@@ -171,7 +174,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
             ServerConnectionListenerProxy.INSTANCE.setChannels(serverConnection, monitor);
         }
         // Inject Leaves bot list
-        if (VersionHelper.isLeaves()) {
+        if (VersionHelper.isLeaves) {
             this.injectLeavesBotList();
         }
     }
@@ -347,7 +350,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
     private void injectLeavesBotList() {
         Object botList = BotListProxy.INSTANCE.getInstance();
         List<Object> bots = BotListProxy.INSTANCE.getBots(botList);
-        ListMonitor<Object> monitor = new ListMonitor<>(bots,
+        ListListener<Object> monitor = new ListListener<>(bots,
                 (bot) -> addFakePlayer(ServerPlayerProxy.INSTANCE.getBukkitEntity(bot)),
                 (bot) -> removeFakePlayer(ServerPlayerProxy.INSTANCE.getBukkitEntity(bot))
         );
@@ -386,25 +389,25 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
                 newMappings.length,
                 RegistryUtils.currentBiomeRegistrySize(),
                 occlusionPredicate
-        ), PacketIds.INSTANCE.clientboundLevelChunkWithLightPacket(), "ClientboundLevelChunkWithLightPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        ), PACKET_IDS.clientboundLevelChunkWithLightPacket(), "ClientboundLevelChunkWithLightPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
         registerByteBufferPacketListener(new SectionBlocksUpdateListener(
                 newMappings,
                 newMappingsMOD,
                 occlusionPredicate
-        ), PacketIds.INSTANCE.clientboundSectionBlocksUpdatePacket(), "ClientboundSectionBlocksUpdatePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        ), PACKET_IDS.clientboundSectionBlocksUpdatePacket(), "ClientboundSectionBlocksUpdatePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
         registerByteBufferPacketListener(new BlockUpdateListener(
                 newMappings,
                 newMappingsMOD,
                 occlusionPredicate
-        ), PacketIds.INSTANCE.clientboundBlockUpdatePacket(), "ClientboundBlockUpdatePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        ), PACKET_IDS.clientboundBlockUpdatePacket(), "ClientboundBlockUpdatePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
         registerByteBufferPacketListener(new LevelParticleListener(
                 newMappings,
                 newMappingsMOD
-        ), PacketIds.INSTANCE.clientboundLevelParticlesPacket(), "ClientboundLevelParticlesPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        ), PACKET_IDS.clientboundLevelParticlesPacket(), "ClientboundLevelParticlesPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
         registerByteBufferPacketListener(new LevelEventListener(
                 newMappings,
                 newMappingsMOD
-        ), PacketIds.INSTANCE.clientboundLevelEventPacket(), "ClientboundLevelEventPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        ), PACKET_IDS.clientboundLevelEventPacket(), "ClientboundLevelEventPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
     }
 
     private void registerPacketListeners() {
@@ -414,73 +417,75 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
         registerNMSPacketConsumer(NMSResourcePackListener.INSTANCE, ServerboundResourcePackPacketProxy.CLASS);
         // bytebuffer
         // 状态切换相关监听器 - 开始
-        // fixme 因为会比 packetevents 在同一秒慢半拍切换，所以说会出现一下下的错误提示，只需要推迟 1 tick 发送即可
-        registerByteBufferPacketListener(FinishConfigurationListener.INSTANCE, PacketIds.INSTANCE.serverboundFinishConfigurationPacket(), "ServerboundFinishConfigurationPacket", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND); // 1.20.2+ s2c to play (configuration)
-        registerByteBufferPacketListener(LoginListener.INSTANCE, PacketIds.INSTANCE.clientboundLoginPacket(), "ClientboundLoginPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND); // 1.20.2+ c2s to play (configuration -> play)
-        registerByteBufferPacketListener(LoginAcknowledgedListener.INSTANCE, PacketIds.INSTANCE.serverboundLoginAcknowledgedPacket(), "ServerboundLoginAcknowledgedPacket", ConnectionState.LOGIN, PacketFlow.SERVERBOUND); // 1.20.2+ to configuration (login)
-        registerByteBufferPacketListener(LoginFinishedListener.INSTANCE, PacketIds.INSTANCE.clientboundLoginFinishedPacket(), "ClientboundLoginFinishedPacket", ConnectionState.LOGIN, PacketFlow.CLIENTBOUND); // 1.20.1 to play (login)
-        registerByteBufferPacketListener(StartConfigurationListener.INSTANCE, PacketIds.INSTANCE.clientboundStartConfigurationPacket(), "ClientboundStartConfigurationPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND); // 1.20.2+ s2c to configuration (play)
-        registerByteBufferPacketListener(ConfigurationAcknowledgedListener.INSTANCE, PacketIds.INSTANCE.serverboundConfigurationAcknowledgedPacket(), "ServerboundConfigurationAcknowledgedPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND); // 1.20.2+ c2s to configuration (play)
-        registerByteBufferPacketListener(IntentionListener.INSTANCE, PacketIds.INSTANCE.clientIntentionPacket(), "ClientIntentionPacket", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND); // to status or login (handshaking)
+        registerByteBufferPacketListener(FinishConfigurationListener.INSTANCE, PACKET_IDS.serverboundFinishConfigurationPacket(), "ServerboundFinishConfigurationPacket", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND); // 1.20.2+ s2c to play (configuration)
+        registerByteBufferPacketListener(LoginListener.INSTANCE, PACKET_IDS.clientboundLoginPacket(), "ClientboundLoginPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND); // 1.20.2+ c2s to play (configuration -> play)
+        registerByteBufferPacketListener(LoginAcknowledgedListener.INSTANCE, PACKET_IDS.serverboundLoginAcknowledgedPacket(), "ServerboundLoginAcknowledgedPacket", ConnectionState.LOGIN, PacketFlow.SERVERBOUND); // 1.20.2+ to configuration (login)
+        registerByteBufferPacketListener(LoginFinishedListener.INSTANCE, PACKET_IDS.clientboundLoginFinishedPacket(), "ClientboundLoginFinishedPacket", ConnectionState.LOGIN, PacketFlow.CLIENTBOUND); // 1.20.1 to play (login)
+        registerByteBufferPacketListener(StartConfigurationListener.INSTANCE, PACKET_IDS.clientboundStartConfigurationPacket(), "ClientboundStartConfigurationPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND); // 1.20.2+ s2c to configuration (play)
+        registerByteBufferPacketListener(ConfigurationAcknowledgedListener.INSTANCE, PACKET_IDS.serverboundConfigurationAcknowledgedPacket(), "ServerboundConfigurationAcknowledgedPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND); // 1.20.2+ c2s to configuration (play)
+        registerByteBufferPacketListener(IntentionListener.INSTANCE, PACKET_IDS.clientIntentionPacket(), "ClientIntentionPacket", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND); // to status or login (handshaking)
         // 状态切换相关监听器 - 结束
-        registerByteBufferPacketListener(PlayerInfoUpdateListener.INSTANCE, PacketIds.INSTANCE.clientboundPlayerInfoUpdatePacket(), "ClientboundPlayerInfoUpdatePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(ClientInformationListener.INSTANCE, PacketIds.INSTANCE.serverboundClientInformationPacket$play(), "ServerboundClientInformationPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(ClientInformationListener.INSTANCE, PacketIds.INSTANCE.serverboundClientInformationPacket$configuration(), "ServerboundClientInformationPacket", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(RespawnListener.INSTANCE, PacketIds.INSTANCE.clientboundRespawnPacket(), "ClientboundRespawnPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(EntityPositionSyncListener.INSTANCE, PacketIds.INSTANCE.clientboundEntityPositionSyncPacket(), "ClientboundEntityPositionSyncPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(MoveEntityPosRotListener.INSTANCE, PacketIds.INSTANCE.clientboundMoveEntityPacket$PosRot(), "ClientboundMoveEntityPacket$PosRot", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(MoveEntityPosListener.INSTANCE, PacketIds.INSTANCE.clientboundMoveEntityPacket$Pos(), "ClientboundMoveEntityPacket$Pos", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(RenameItemListener.INSTANCE, PacketIds.INSTANCE.serverboundRenameItemPacket(), "ServerboundRenameItemPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(SignUpdateListener.INSTANCE, PacketIds.INSTANCE.serverboundSignUpdatePacket(), "ServerboundSignUpdatePacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(EditBookListener.INSTANCE, PacketIds.INSTANCE.serverboundEditBookPacket(), "ServerboundEditBookPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(EntityEventListener.INSTANCE, PacketIds.INSTANCE.clientboundEntityEventPacket(), "ClientboundEntityEventPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(UpdateTagsListener.INSTANCE, PacketIds.INSTANCE.clientboundUpdateTagsPacket$play(), "ClientboundUpdateTagsPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(UpdateTagsListener.INSTANCE, PacketIds.INSTANCE.clientboundupdatetagspacket$configuration(), "ClientboundUpdateTagsPacket", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(PlayerActionListener.INSTANCE, PacketIds.INSTANCE.serverboundPlayerActionPacket(), "ServerboundPlayerActionPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(SwingListener.INSTANCE, PacketIds.INSTANCE.serverboundSwingPacket(), "ServerboundSwingPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(HelloListener.INSTANCE, PacketIds.INSTANCE.serverboundHelloPacket(), "ServerboundHelloPacket", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(UseItemOnListener.INSTANCE, PacketIds.INSTANCE.serverboundUseItemOnPacket(), "ServerboundUseItemOnPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(PickItemFromBlockListener.INSTANCE, PacketIds.INSTANCE.serverboundPickItemFromBlockPacket(), "ServerboundPickItemFromBlockPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(PickItemFromEntityListener.INSTANCE, PacketIds.INSTANCE.serverboundPickItemFromEntityPacket(), "ServerboundPickItemFromEntityPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(ServerDataListener.INSTANCE, PacketIds.INSTANCE.clientboundServerDataPacket(), "ClientboundServerDataPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(ChatSessionUpdateListener.INSTANCE, PacketIds.INSTANCE.serverboundChatSessionUpdatePacket(), "ServerboundChatSessionUpdatePacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(CustomChatCompletionsListener.INSTANCE, PacketIds.INSTANCE.clientboundCustomChatCompletionsPacket(), "ClientboundCustomChatCompletionsPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(StatusResponseListener.INSTANCE, PacketIds.INSTANCE.clientboundStatusResponsePacket(), "ClientboundStatusResponsePacket", ConnectionState.STATUS, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(ForgetLevelChunkListener.INSTANCE, PacketIds.INSTANCE.clientboundForgetLevelChunkPacket(), "ClientboundForgetLevelChunkPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetScoreListener.INSTANCE, PacketIds.INSTANCE.clientboundSetScorePacket(), "ClientboundSetScorePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(RecipeBookAddListener.INSTANCE, PacketIds.INSTANCE.clientboundRecipeBookAddPacket(), "ClientboundRecipeBookAddPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(PlaceGhostRecipeListener.INSTANCE, PacketIds.INSTANCE.clientboundPlaceGhostRecipePacket(), "ClientboundPlaceGhostRecipePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(UpdateAdvancementsListener.INSTANCE, PacketIds.INSTANCE.clientboundUpdateAdvancementsPacket(), "ClientboundUpdateAdvancementsPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(RemoveEntitiesListener.INSTANCE, PacketIds.INSTANCE.clientboundRemoveEntitiesPacket(), "ClientboundRemoveEntitiesPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SoundListener.INSTANCE, PacketIds.INSTANCE.clientboundSoundPacket(), "ClientboundSoundPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(ContainerSetContentListener.INSTANCE, PacketIds.INSTANCE.clientboundContainerSetContentPacket(), "ClientboundContainerSetContentPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(ContainerSetSlotListener.INSTANCE, PacketIds.INSTANCE.clientboundContainerSetSlotPacket(), "ClientboundContainerSetSlotPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetCursorItemListener.INSTANCE, PacketIds.INSTANCE.clientboundSetCursorItemPacket(), "ClientboundSetCursorItemPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetEquipmentListener.INSTANCE, PacketIds.INSTANCE.clientboundSetEquipmentPacket(), "ClientboundSetEquipmentPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetPlayerInventoryListener.INSTANCE, PacketIds.INSTANCE.clientboundSetPlayerInventoryPacket(), "ClientboundSetPlayerInventoryPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetEntityDataListener.INSTANCE, PacketIds.INSTANCE.clientboundSetEntityDataPacket(), "ClientboundSetEntityDataPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetCreativeModeSlotListener.INSTANCE, PacketIds.INSTANCE.serverboundSetCreativeModeSlotPacket(), "ServerboundSetCreativeModeSlotPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(ContainerClickListener.INSTANCE, PacketIds.INSTANCE.serverboundContainerClickPacket(), "ServerboundContainerClickPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(AttackListener.INSTANCE, PacketIds.INSTANCE.serverboundAttackPacket(), "ServerboundAttackPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(AddEntityListener.INSTANCE, PacketIds.INSTANCE.clientboundAddEntityPacket(), "ClientboundAddEntityPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(BlockEntityDataListener.INSTANCE, PacketIds.INSTANCE.clientboundBlockEntityDataPacket(), "ClientboundBlockEntityDataPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PacketIds.INSTANCE.serverboundCustomPayloadPacket$play(), "ServerboundCustomPayloadPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PacketIds.INSTANCE.serverboundCustomPayloadPacket$configuration(), "ServerboundCustomPayloadPacket", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PacketIds.INSTANCE.clientboundCustomPayloadPacket$play(), "ClientboundCustomPayloadPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PacketIds.INSTANCE.clientboundCustomPayloadPacket$configuration(), "ClientboundCustomPayloadPacket", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(InteractListener.INSTANCE, PacketIds.INSTANCE.serverboundInteractPacket(), "ServerboundInteractPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        registerByteBufferPacketListener(UpdateRecipesListener.INSTANCE, PacketIds.INSTANCE.clientboundUpdateRecipesPacket(), "ClientboundUpdateRecipesPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(MerchantOffersListener.INSTANCE, PacketIds.INSTANCE.clientBoundMerchantOffersPacket(), "ClientboundMerchantOffersPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(OpenScreenListener.INSTANCE, PacketIds.INSTANCE.clientboundOpenScreenPacket(), "ClientboundOpenScreenPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SystemChatListener.INSTANCE, PacketIds.INSTANCE.clientboundSystemChatPacket(), "ClientboundSystemChatPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetActionBarTextListener.INSTANCE, PacketIds.INSTANCE.clientboundSetActionBarTextPacket(), "ClientboundSetActionBarTextPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(TabListListener.INSTANCE, PacketIds.INSTANCE.clientboundTabListPacket(), "ClientboundTabListPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetTitleTextListener.INSTANCE, PacketIds.INSTANCE.clientboundSetTitleTextPacket(), "ClientboundSetTitleTextPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetSubtitleTextListener.INSTANCE, PacketIds.INSTANCE.clientboundSetSubtitleTextPacket(), "ClientboundSetSubtitleTextPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(BossEventListener.INSTANCE, PacketIds.INSTANCE.clientboundBossEventPacket(), "ClientboundBossEventPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetPlayerTeamListener.INSTANCE, PacketIds.INSTANCE.clientboundSetPlayerTeamPacket(), "ClientboundSetPlayerTeamPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(SetObjectiveListener.INSTANCE, PacketIds.INSTANCE.clientboundSetObjectivePacket(), "ClientboundSetObjectivePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        registerByteBufferPacketListener(PlayerChatListener.INSTANCE, PacketIds.INSTANCE.clientboundPlayerChatPacket(), "ClientboundPlayerChatPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(PlayerInfoUpdateListener.INSTANCE, PACKET_IDS.clientboundPlayerInfoUpdatePacket(), "ClientboundPlayerInfoUpdatePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ClientInformationListener.INSTANCE, PACKET_IDS.serverboundClientInformationPacket$play(), "ServerboundClientInformationPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(ClientInformationListener.INSTANCE, PACKET_IDS.serverboundClientInformationPacket$configuration(), "ServerboundClientInformationPacket", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(RespawnListener.INSTANCE, PACKET_IDS.clientboundRespawnPacket(), "ClientboundRespawnPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(EntityPositionSyncListener.INSTANCE, PACKET_IDS.clientboundEntityPositionSyncPacket(), "ClientboundEntityPositionSyncPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(MoveEntityPosRotListener.INSTANCE, PACKET_IDS.clientboundMoveEntityPacket$PosRot(), "ClientboundMoveEntityPacket$PosRot", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(MoveEntityPosListener.INSTANCE, PACKET_IDS.clientboundMoveEntityPacket$Pos(), "ClientboundMoveEntityPacket$Pos", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(RenameItemListener.INSTANCE, PACKET_IDS.serverboundRenameItemPacket(), "ServerboundRenameItemPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(SignUpdateListener.INSTANCE, PACKET_IDS.serverboundSignUpdatePacket(), "ServerboundSignUpdatePacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(EditBookListener.INSTANCE, PACKET_IDS.serverboundEditBookPacket(), "ServerboundEditBookPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(EntityEventListener.INSTANCE, PACKET_IDS.clientboundEntityEventPacket(), "ClientboundEntityEventPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(UpdateTagsListener.INSTANCE, PACKET_IDS.clientboundUpdateTagsPacket$play(), "ClientboundUpdateTagsPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(UpdateTagsListener.INSTANCE, PACKET_IDS.clientboundupdatetagspacket$configuration(), "ClientboundUpdateTagsPacket", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(PlayerActionListener.INSTANCE, PACKET_IDS.serverboundPlayerActionPacket(), "ServerboundPlayerActionPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(SwingListener.INSTANCE, PACKET_IDS.serverboundSwingPacket(), "ServerboundSwingPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(HelloListener.INSTANCE, PACKET_IDS.serverboundHelloPacket(), "ServerboundHelloPacket", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(UseItemOnListener.INSTANCE, PACKET_IDS.serverboundUseItemOnPacket(), "ServerboundUseItemOnPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(PickItemFromBlockListener.INSTANCE, PACKET_IDS.serverboundPickItemFromBlockPacket(), "ServerboundPickItemFromBlockPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(PickItemFromEntityListener.INSTANCE, PACKET_IDS.serverboundPickItemFromEntityPacket(), "ServerboundPickItemFromEntityPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(ServerDataListener.INSTANCE, PACKET_IDS.clientboundServerDataPacket(), "ClientboundServerDataPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ChatSessionUpdateListener.INSTANCE, PACKET_IDS.serverboundChatSessionUpdatePacket(), "ServerboundChatSessionUpdatePacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(CustomChatCompletionsListener.INSTANCE, PACKET_IDS.clientboundCustomChatCompletionsPacket(), "ClientboundCustomChatCompletionsPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(StatusResponseListener.INSTANCE, PACKET_IDS.clientboundStatusResponsePacket(), "ClientboundStatusResponsePacket", ConnectionState.STATUS, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ForgetLevelChunkListener.INSTANCE, PACKET_IDS.clientboundForgetLevelChunkPacket(), "ClientboundForgetLevelChunkPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetScoreListener.INSTANCE, PACKET_IDS.clientboundSetScorePacket(), "ClientboundSetScorePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(RecipeBookAddListener.INSTANCE, PACKET_IDS.clientboundRecipeBookAddPacket(), "ClientboundRecipeBookAddPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(PlaceGhostRecipeListener.INSTANCE, PACKET_IDS.clientboundPlaceGhostRecipePacket(), "ClientboundPlaceGhostRecipePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(UpdateAdvancementsListener.INSTANCE, PACKET_IDS.clientboundUpdateAdvancementsPacket(), "ClientboundUpdateAdvancementsPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(RemoveEntitiesListener.INSTANCE, PACKET_IDS.clientboundRemoveEntitiesPacket(), "ClientboundRemoveEntitiesPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SoundListener.INSTANCE, PACKET_IDS.clientboundSoundPacket(), "ClientboundSoundPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ContainerSetContentListener.INSTANCE, PACKET_IDS.clientboundContainerSetContentPacket(), "ClientboundContainerSetContentPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ContainerSetSlotListener.INSTANCE, PACKET_IDS.clientboundContainerSetSlotPacket(), "ClientboundContainerSetSlotPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetCursorItemListener.INSTANCE, PACKET_IDS.clientboundSetCursorItemPacket(), "ClientboundSetCursorItemPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetEquipmentListener.INSTANCE, PACKET_IDS.clientboundSetEquipmentPacket(), "ClientboundSetEquipmentPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetPlayerInventoryListener.INSTANCE, PACKET_IDS.clientboundSetPlayerInventoryPacket(), "ClientboundSetPlayerInventoryPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetEntityDataListener.INSTANCE, PACKET_IDS.clientboundSetEntityDataPacket(), "ClientboundSetEntityDataPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetCreativeModeSlotListener.INSTANCE, PACKET_IDS.serverboundSetCreativeModeSlotPacket(), "ServerboundSetCreativeModeSlotPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(ContainerClickListener.INSTANCE, PACKET_IDS.serverboundContainerClickPacket(), "ServerboundContainerClickPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(AttackListener.INSTANCE, PACKET_IDS.serverboundAttackPacket(), "ServerboundAttackPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(AddEntityListener.INSTANCE, PACKET_IDS.clientboundAddEntityPacket(), "ClientboundAddEntityPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(BlockEntityDataListener.INSTANCE, PACKET_IDS.clientboundBlockEntityDataPacket(), "ClientboundBlockEntityDataPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PACKET_IDS.serverboundCustomPayloadPacket$play(), "ServerboundCustomPayloadPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PACKET_IDS.serverboundCustomPayloadPacket$configuration(), "ServerboundCustomPayloadPacket", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PACKET_IDS.clientboundCustomPayloadPacket$play(), "ClientboundCustomPayloadPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(CustomPayloadListener.INSTANCE, PACKET_IDS.clientboundCustomPayloadPacket$configuration(), "ClientboundCustomPayloadPacket", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(InteractListener.INSTANCE, PACKET_IDS.serverboundInteractPacket(), "ServerboundInteractPacket", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        registerByteBufferPacketListener(UpdateRecipesListener.INSTANCE, PACKET_IDS.clientboundUpdateRecipesPacket(), "ClientboundUpdateRecipesPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(MerchantOffersListener.INSTANCE, PACKET_IDS.clientBoundMerchantOffersPacket(), "ClientboundMerchantOffersPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(OpenScreenListener.INSTANCE, PACKET_IDS.clientboundOpenScreenPacket(), "ClientboundOpenScreenPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SystemChatListener.INSTANCE, PACKET_IDS.clientboundSystemChatPacket(), "ClientboundSystemChatPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetActionBarTextListener.INSTANCE, PACKET_IDS.clientboundSetActionBarTextPacket(), "ClientboundSetActionBarTextPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(TabListListener.INSTANCE, PACKET_IDS.clientboundTabListPacket(), "ClientboundTabListPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetTitleTextListener.INSTANCE, PACKET_IDS.clientboundSetTitleTextPacket(), "ClientboundSetTitleTextPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetSubtitleTextListener.INSTANCE, PACKET_IDS.clientboundSetSubtitleTextPacket(), "ClientboundSetSubtitleTextPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(BossEventListener.INSTANCE, PACKET_IDS.clientboundBossEventPacket(), "ClientboundBossEventPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetPlayerTeamListener.INSTANCE, PACKET_IDS.clientboundSetPlayerTeamPacket(), "ClientboundSetPlayerTeamPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(SetObjectiveListener.INSTANCE, PACKET_IDS.clientboundSetObjectivePacket(), "ClientboundSetObjectivePacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(PlayerChatListener.INSTANCE, PACKET_IDS.clientboundPlayerChatPacket(), "ClientboundPlayerChatPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(RegistryDataListener.INSTANCE, PACKET_IDS.clientboundRegistryDataPacket(), "ClientboundRegistryDataPacket", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ShowDialogListener.INSTANCE, PACKET_IDS.clientboundShowDialogPacket$play(), "ClientboundShowDialogPacket", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        registerByteBufferPacketListener(ShowDialogListener.INSTANCE, PACKET_IDS.clientboundShowDialogPacket$configuration(), "ClientboundShowDialogPacket", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -492,16 +497,17 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
             this.onlineUsers.put(player.getUniqueId(), user);
             this.resetUserArray();
             // folia在此tick每个玩家
-            if (VersionHelper.isFolia()) {
-                player.getScheduler().runAtFixedRate(plugin.javaPlugin(), (t) -> user.tick(),
-                        () -> {
-                        }, 1, 1);
+            if (VersionHelper.isFolia) {
+                player.getScheduler().runAtFixedRate(plugin.javaPlugin(), (t) -> user.tick(), null, 1, 1);
             }
             // 发送修复图腾音效
             user.sendPacket(TotemAnimationCommand.FIX_TOTEM_SOUND_PACKET, false);
             // 发送颜色队伍
             for (Object packet : BukkitTeamManager.instance().addTeamsPackets()) {
                 user.sendPacket(packet, false);
+            }
+            if (user.hasClientMod() && user.protocolVersion().isVersionNewerThan(ProtocolVersion.V1_20_2)) {
+                user.sendCustomPackets(ClientboundCreativeModeTabItemsPacket.create(user));
             }
             Channel channel = user.nettyChannel();
             if (this.hasAntiPopup && Config.disableChatReport() && channel != null) {
@@ -591,7 +597,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
     @NotNull
     public Channel getChannel(Player player) {
         SimpleChannelInboundHandler<Object> connection;
-        if (VersionHelper.isOrAbove1_20_2()) {
+        if (VersionHelper.isOrAbove1_20_2) {
             connection = ServerCommonPacketListenerImplProxy.INSTANCE.getConnection(ServerPlayerProxy.INSTANCE.getConnection(CraftEntityProxy.INSTANCE.getEntity(player)));
         } else {
             connection = ServerGamePacketListenerImplProxy.INSTANCE.getConnection(ServerPlayerProxy.INSTANCE.getConnection(CraftEntityProxy.INSTANCE.getEntity(player)));
@@ -605,7 +611,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
         if (immediately) {
             this.immediatePacketConsumer.accept(player.nettyChannel(), packet, sendListener);
         } else {
-            if (VersionHelper.isOrAbove1_21_6()) {
+            if (VersionHelper.isOrAbove1_21_6) {
                 this.packetConsumer.accept(player.connection(), packet, sendListener != null ? (ChannelFutureListener) $ -> sendListener.run() : null);
             } else {
                 this.packetConsumer.accept(player.connection(), packet, sendListener != null ? PacketSendListenerProxy.INSTANCE.thenRun(sendListener) : null);
@@ -619,7 +625,7 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
         if (immediately) {
             this.immediatePacketsConsumer.accept(player.nettyChannel(), packet, sendListener);
         } else {
-            if (VersionHelper.isOrAbove1_21_6()) {
+            if (VersionHelper.isOrAbove1_21_6) {
                 this.packetsConsumer.accept(player.connection(), packet, sendListener != null ? (ChannelFutureListener) $ -> sendListener.run() : null);
             } else {
                 this.packetsConsumer.accept(player.connection(), packet, sendListener != null ? PacketSendListenerProxy.INSTANCE.thenRun(sendListener) : null);
@@ -707,6 +713,9 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
         }
 
         addToPipeline(pipeline, new PluginChannelEncoder(user), new PluginChannelDecoder(user));
+        if (this.serverPortHost != null) {
+            pipeline.addFirst(HTTP_DECODER, new HTTPChannelDecoder());
+        }
         channel.closeFuture().addListener((ChannelFutureListener) future -> handleDisconnection(user.nettyChannel()));
         setUser(channel, user);
     }
@@ -996,4 +1005,34 @@ public final class BukkitNetworkManager extends AbstractNetworkManager implement
         }
     }
 
+    public class HTTPChannelDecoder extends ByteToMessageDecoder {
+
+        @Override
+        protected void decode(ChannelHandlerContext context, ByteBuf buf, List<Object> list) throws Exception {
+            if (check(context, buf)) return;
+            context.channel().pipeline().remove(this);
+            if (buf.isReadable()) {
+                list.add(buf.retain());
+            }
+        }
+
+        private boolean check(ChannelHandlerContext context, ByteBuf buf) {
+            if (BukkitNetworkManager.this.serverPortHost == null) return false;
+            int readableBytes = buf.readableBytes();
+            if (readableBytes == 0) return false;
+            if (readableBytes == 1 && buf.getByte(0) == 'G') return true;
+            if (readableBytes == 2 && buf.getByte(0) == 'G' && buf.getByte(1) == 'E') return true;
+            if (readableBytes < 3 || buf.getByte(0) != 'G' || buf.getByte(1) != 'E' || buf.getByte(2) != 'T') return false;
+            ChannelPipeline pipeline = context.channel().pipeline();
+            for (ChannelHandler handler : pipeline.toMap().values()) pipeline.remove(handler);
+            BukkitNetworkManager.this.serverPortHost.accept(pipeline);
+            pipeline.fireChannelRead(buf.retain());
+            return true;
+        }
+    }
+
+    @Override
+    public void setServerPortHost(Consumer<ChannelPipeline> channelPipelineConsumer) {
+        this.serverPortHost = channelPipelineConsumer;
+    }
 }

@@ -1,7 +1,6 @@
 package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
-import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -11,6 +10,7 @@ import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.proxy.bukkit.craftbukkit.event.CraftEventFactoryProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelAccessorProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.SignalGetterProxy;
 import org.bukkit.event.block.BlockRedstoneEvent;
@@ -44,7 +44,7 @@ public final class LampBlockBehavior extends BukkitBlockBehavior {
         ImmutableBlockState customState = optionalCustomState.get();
         if (customState.get(this.litProperty) && !SignalGetterProxy.INSTANCE.hasNeighborSignal(world, blockPos)) {
             BlockRedstoneEvent event;
-            if (VersionHelper.isOrAbove1_21_9()) {
+            if (VersionHelper.isOrAbove1_21_9) {
                 event = CraftEventFactoryProxy.INSTANCE.callRedstoneChange$0(world, blockPos, 0, 15);
             } else {
                 event = CraftEventFactoryProxy.INSTANCE.callRedstoneChange$1(world, blockPos, 0, 15);
@@ -67,10 +67,10 @@ public final class LampBlockBehavior extends BukkitBlockBehavior {
         boolean lit = customState.get(this.litProperty);
         if (lit != SignalGetterProxy.INSTANCE.hasNeighborSignal(world, blockPos)) {
             if (lit) {
-                LevelUtils.scheduleBlockTick(world, blockPos, thisBlock, 4);
+                LevelAccessorProxy.INSTANCE.scheduleTick$0(world, blockPos, thisBlock, 4);
             } else {
                 BlockRedstoneEvent event;
-                if (VersionHelper.isOrAbove1_21_9()) {
+                if (VersionHelper.isOrAbove1_21_9) {
                     event = CraftEventFactoryProxy.INSTANCE.callRedstoneChange$0(world, blockPos, 0, 15);
                 } else {
                     event = CraftEventFactoryProxy.INSTANCE.callRedstoneChange$1(world, blockPos, 0, 15);

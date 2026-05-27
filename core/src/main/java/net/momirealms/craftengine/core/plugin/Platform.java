@@ -1,7 +1,10 @@
 package net.momirealms.craftengine.core.plugin;
 
 import com.google.gson.JsonElement;
+import io.netty.buffer.ByteBuf;
 import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.network.id.PacketIds;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.Container;
 import net.momirealms.craftengine.core.world.World;
@@ -22,11 +25,19 @@ public interface Platform {
 
     Player getPlayer(UUID uuid);
 
-    boolean isStopping();
-
     ParticleType getParticleType(Key name);
 
     int biomeCount();
 
     Object createContainer(Container container);
+
+    Item readItem(ByteBuf buf);
+
+    void writeItem(ByteBuf buf, Item item);
+
+    PacketIds packetIds();
+
+    int getServerPort();
+
+    boolean hasProxy();
 }

@@ -5,6 +5,8 @@ import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItem;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.item.ItemTags;
+import net.momirealms.craftengine.core.item.component.DataComponentKeys;
 import net.momirealms.craftengine.core.item.recipe.UniqueIdItem;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
@@ -17,6 +19,7 @@ import net.momirealms.craftengine.proxy.minecraft.util.datafix.fixes.ReferencesP
 import net.momirealms.craftengine.proxy.minecraft.world.entity.LivingEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackTemplateProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.item.component.ToolProxy;
 import net.momirealms.craftengine.proxy.spottedleaf.dataconverter.minecraft.MCDataConverterProxy;
 import net.momirealms.craftengine.proxy.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistryProxy;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -105,7 +108,7 @@ public final class ItemStackUtils {
         Tag itemTag = tag;
         int currentVersion = VersionHelper.WORLD_VERSION;
         if (Config.enableItemDataFixerUpper() && dataVersion != currentVersion) {
-            if (VersionHelper.isPaper() && VersionHelper.MINECRAFT_VERSION == MinecraftVersion.V1_21_5) {
+            if (VersionHelper.isPaper && VersionHelper.MINECRAFT_VERSION == MinecraftVersion.V1_21_5) {
                 Object nmsTag = RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, itemTag);
                 Object converted = MCDataConverterProxy.INSTANCE.convertTag(MCTypeRegistryProxy.ITEM_STACK, nmsTag, dataVersion, currentVersion);
                 itemTag = RegistryOps.NBT.convertTo(RegistryOps.SPARROW_NBT, converted);
@@ -115,12 +118,17 @@ public final class ItemStackUtils {
             }
         }
         final Tag finalItemTag = itemTag;
+        return parseMinecraftItem(finalItemTag);
+    }
+
+    @Nullable
+    public static Object parseMinecraftItem(Tag tag) {
         if (VersionHelper.COMPONENT_RELEASE) {
-            return ItemStackProxy.INSTANCE.getCodec().parse(RegistryOps.SPARROW_NBT, finalItemTag)
-                    .resultOrPartial(error -> CraftEngine.instance().logger().error("Tried to load invalid item: '" + finalItemTag + "'. " + error))
+            return ItemStackProxy.INSTANCE.getCodec().parse(RegistryOps.SPARROW_NBT, tag)
+                    .resultOrPartial(error -> CraftEngine.instance().logger().error("Tried to load invalid item: '" + tag + "'. " + error))
                     .orElse(null);
         } else {
-            Object nmsTag = RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, finalItemTag);
+            Object nmsTag = RegistryOps.SPARROW_NBT.convertTo(RegistryOps.NBT, tag);
             return ItemStackProxy.INSTANCE.of(nmsTag);
         }
     }
@@ -131,7 +139,7 @@ public final class ItemStackUtils {
     }
 
     public static void hurtAndBreak(Object nmsStack, int amount, Object livingEntity, Object slot) {
-        if (VersionHelper.isOrAbove1_20_5()) {
+        if (VersionHelper.isOrAbove1_20_5) {
             ItemStackProxy.INSTANCE.hurtAndBreak(nmsStack, amount, livingEntity, slot);
         } else {
             ItemStackProxy.INSTANCE.hurtAndBreak(nmsStack, amount, livingEntity, entity -> LivingEntityProxy.INSTANCE.broadcastBreakEvent(entity, slot));
@@ -170,5 +178,21 @@ public final class ItemStackUtils {
                 ItemStackProxy.INSTANCE.getCount(minecraftItem),
                 ItemStackProxy.INSTANCE.getComponentsPatch(minecraftItem)
         );
+    }
+
+    public static boolean canBreakBlockInCreativeMode(BukkitItem item) {
+        if (VersionHelper.isOrAbove1_21_5) {
+            Object tool = item.getExactComponent(DataComponentKeys.TOOL);
+            if (tool == null) {
+                return true;
+            }
+            return ToolProxy.INSTANCE.canDestroyBlocksInCreative(tool);
+        } else {
+            Material material = item.getBukkitItem().getType();
+            return material != Material.DEBUG_STICK
+                    && material != Material.TRIDENT
+                    && (!VersionHelper.isOrAbove1_20_5 || material != MaterialUtils.MACE)
+                    && !item.hasVanillaTag(ItemTags.SWORDS);
+        }
     }
 }

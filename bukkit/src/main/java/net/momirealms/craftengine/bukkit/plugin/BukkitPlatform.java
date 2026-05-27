@@ -1,21 +1,27 @@
 package net.momirealms.craftengine.bukkit.plugin;
 
 import com.google.gson.JsonElement;
+import io.netty.buffer.ByteBuf;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
+import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.bukkit.util.ParticleUtils;
 import net.momirealms.craftengine.bukkit.util.RegistryOps;
 import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.bukkit.world.BukkitContainer;
 import net.momirealms.craftengine.bukkit.world.particle.BukkitParticleType;
 import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.Platform;
+import net.momirealms.craftengine.core.plugin.network.id.PacketIds;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.Container;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.particle.ParticleType;
+import net.momirealms.craftengine.proxy.paper.configuration.GlobalConfigurationProxy;
+import net.momirealms.craftengine.proxy.spigotmc.SpigotConfigProxy;
 import net.momirealms.sparrow.nbt.Tag;
 import org.bukkit.Bukkit;
 import org.bukkit.Particle;
@@ -31,16 +37,11 @@ public final class BukkitPlatform implements Platform {
 
     @Override
     public void dispatchCommand(String command) {
-        if (VersionHelper.isFolia()) {
+        if (VersionHelper.isFolia) {
             Bukkit.getGlobalRegionScheduler().run(this.plugin.javaPlugin(), (t) -> Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), command));
         } else {
             Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), command);
         }
-    }
-
-    @Override
-    public boolean isStopping() {
-        return Bukkit.isStopping();
     }
 
     @Override
@@ -88,5 +89,36 @@ public final class BukkitPlatform implements Platform {
         } else {
             throw new IllegalArgumentException("Container is not a BukkitContainer");
         }
+    }
+
+    public Item readItem(ByteBuf buf) {
+        return PacketUtils.readItem(buf);
+    }
+
+    public void writeItem(ByteBuf buf, Item item) {
+        PacketUtils.writeItem(buf, item);
+    }
+
+    @Override
+    public PacketIds packetIds() {
+        return BukkitNetworkManager.PACKET_IDS;
+    }
+
+    @Override
+    public int getServerPort() {
+        return Bukkit.getPort();
+    }
+
+    @Override
+    public boolean hasProxy() {
+        boolean bungee = SpigotConfigProxy.INSTANCE.getBungee();
+        boolean velocity = GlobalConfigurationProxy.ProxiesProxy.VelocityProxy.INSTANCE.getEnabled(
+                GlobalConfigurationProxy.ProxiesProxy.INSTANCE.getVelocity(
+                        GlobalConfigurationProxy.INSTANCE.getProxies(
+                                GlobalConfigurationProxy.INSTANCE.get()
+                        )
+                )
+        );
+        return bungee || velocity;
     }
 }

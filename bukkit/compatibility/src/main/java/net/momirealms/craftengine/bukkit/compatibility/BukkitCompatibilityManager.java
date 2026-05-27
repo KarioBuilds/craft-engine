@@ -74,6 +74,7 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
     private final Map<String, ItemSource> itemSources;
     private final Map<String, LevelerProvider> levelerProviders;
     private final Map<String, EntityProvider> entityProviders;
+    private final Set<String> loggedPlugins;
     private ModelProvider[] modelProviderArray;
     private TagResolverProvider[] tagResolverProviderArray = null;
     private JsonObject blueMapBlockColors = new JsonObject();
@@ -89,6 +90,7 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
         this.entityProviders = new HashMap<>();
         this.modelProviders = new HashMap<>();
         this.tagResolverProviders = new HashMap<>();
+        this.loggedPlugins = new HashSet<>();
         this.modelProviderArray = new ModelProvider[0];
     }
 
@@ -238,17 +240,21 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
             runCatchingHook(() -> WrappedBlockStateHelper.register("ac{}grim{}grimac{}shaded{}com{}github{}retrooper{}packetevents"), "GrimAC");
         }
         BukkitLevelerBridge levelerBridge = BukkitLevelerBridge.builder()
-                .onHookSuccess(this::logHook)
-                .onHookFailure((s, t) -> this.plugin.logger().warn("Failed to hook " + s, t))
-                .detectSupportedPlugins()
+                .detectSupportedPlugins(
+                        this::logHook,
+                        (s, t) -> this.plugin.logger().warn("Failed to hook " + s, t),
+                        null
+                )
                 .build();
         for (cn.gtemc.levelerbridge.api.LevelerProvider<org.bukkit.entity.Player> provider : levelerBridge.providers()) {
             this.registerLevelerProvider(new LevelerBridgeLeveler(provider));
         }
         BukkitItemBridge itemBridge = BukkitItemBridge.builder()
-                .onHookSuccess(this::logHook)
-                .onHookFailure((s, t) -> this.plugin.logger().warn("Failed to hook " + s, t))
-                .detectSupportedPlugins(p -> !p.getName().equalsIgnoreCase("CraftEngine"))
+                .detectSupportedPlugins(
+                        this::logHook,
+                        (s, t) -> this.plugin.logger().warn("Failed to hook " + s, t),
+                        p -> !p.getName().equalsIgnoreCase("CraftEngine")
+                )
                 .build();
         for (Provider<ItemStack, org.bukkit.entity.Player> provider : itemBridge.providers()) {
             this.registerItemSource(new ItemBridgeSource(provider));
@@ -256,6 +262,7 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
         if (this.isPluginEnabled("BlueMap")) {
             runCatchingHook(this::initBlueMapHook, "BlueMap");
         }
+        this.loggedPlugins.clear();
     }
 
     private void runCatchingHook(ThrowableRunnable runnable, String plugin) {
@@ -279,6 +286,7 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
     }
 
     private void logHook(String plugin) {
+        if (!this.loggedPlugins.add(plugin)) return;
         this.plugin.logger().info(TranslationManager.instance().plainTranslation("plugin.compatibility", plugin));
     }
 
@@ -300,7 +308,7 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
 
     private void initSlimeWorldHook() {
         WorldManager worldManager = this.plugin.worldManager();
-        if (VersionHelper.isOrAbove1_21_4()) {
+        if (VersionHelper.isOrAbove1_21_4) {
             try {
                 Class.forName("com.infernalsuite.asp.api.AdvancedSlimePaperAPI");
                 runCatchingHook(() -> {
@@ -333,9 +341,9 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
     @SuppressWarnings({"deprecation", "DataFlowIssue"})
     private void initFastAsyncWorldEditHook() {
         Plugin fastAsyncWorldEdit = Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit");
-        String version = VersionHelper.isPaper() ? fastAsyncWorldEdit.getPluginMeta().getVersion() : fastAsyncWorldEdit.getDescription().getVersion();
+        String version = VersionHelper.isPaper ? fastAsyncWorldEdit.getPluginMeta().getVersion() : fastAsyncWorldEdit.getDescription().getVersion();
         if (!WorldEditBlockRegister.checkFAWECompatible(version)) {
-            if (VersionHelper.isOrAbove1_20_3()) {
+            if (VersionHelper.isOrAbove1_20_3) {
                 this.plugin.logger().error("");
                 if (Locale.getDefault() == Locale.SIMPLIFIED_CHINESE) {
                     this.plugin.logger().error("[兼容性] 插件需要更新 FastAsyncWorldEdit 到 2.13.0 或更高版本，以获得更好的兼容性。(当前版本: " + version + ")");
@@ -449,7 +457,7 @@ public final class BukkitCompatibilityManager implements CompatibilityManager {
 
     @Override
     public void blueMapBlockColors(ImmutableBlockState state, BiConsumer<String, JsonElement> callback) {
-        if (this.blueMapBlockColors.isEmpty() || state == null || state.isEmpty()) return;
+        if (this.blueMapBlockColors.asMap().isEmpty() || state == null || state.isEmpty()) return;
         String visualId = state.visualBlockState().ownerId().asString();
         JsonElement value = this.blueMapBlockColors.get(visualId);
         if (value == null) return;

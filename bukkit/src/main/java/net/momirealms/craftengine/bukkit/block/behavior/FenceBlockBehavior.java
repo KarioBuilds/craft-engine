@@ -2,7 +2,10 @@ package net.momirealms.craftengine.bukkit.block.behavior;
 
 import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
-import net.momirealms.craftengine.bukkit.util.*;
+import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
+import net.momirealms.craftengine.bukkit.util.BlockTags;
+import net.momirealms.craftengine.bukkit.util.DirectionUtils;
+import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.BlockStateWrapper;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -25,6 +28,7 @@ import net.momirealms.craftengine.proxy.minecraft.tags.BlockTagsProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.InteractionResultProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.LeadItemProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelAccessorProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlocksProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.FenceGateBlockProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.LeavesBlockProxy;
@@ -39,7 +43,7 @@ import java.util.Optional;
 
 public final class FenceBlockBehavior extends BukkitBlockBehavior implements PathFindingBlock {
     public static final BlockBehaviorFactory<FenceBlockBehavior> FACTORY = new Factory();
-    public static final Object InteractionResult$SUCCESS_SERVER = VersionHelper.isOrAbove1_21_2() ? InteractionResultProxy.INSTANCE.getSuccessServer() : InteractionResultProxy.INSTANCE.getSuccess();
+    public static final Object InteractionResult$SUCCESS_SERVER = VersionHelper.isOrAbove1_21_2 ? InteractionResultProxy.INSTANCE.getSuccessServer() : InteractionResultProxy.INSTANCE.getSuccess();
     private static final Key DEFAULT_CONNECTABLE = Key.of("minecraft:wooden_fences");
     public final Property<Boolean> northProperty;
     public final Property<Boolean> eastProperty;
@@ -147,7 +151,7 @@ public final class FenceBlockBehavior extends BukkitBlockBehavior implements Pat
         ImmutableBlockState state = optionalState.get();
         Property<Boolean> waterlogged = state.getProperty("waterlogged");
         if (waterlogged != null) {
-            LevelUtils.scheduleFluidTick(args[updateShape$level], args[updateShape$blockPos], FluidsProxy.WATER, 5);
+            LevelAccessorProxy.INSTANCE.scheduleTick$1(args[updateShape$level], args[updateShape$blockPos], FluidsProxy.WATER, 5);
         }
         Direction direction = DirectionUtils.fromNMSDirection(args[updateShape$direction]);
         if (direction.axis().isHorizontal()) {

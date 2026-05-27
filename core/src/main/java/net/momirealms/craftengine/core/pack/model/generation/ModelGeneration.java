@@ -1,6 +1,5 @@
 package net.momirealms.craftengine.core.pack.model.generation;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.momirealms.craftengine.core.pack.model.generation.display.DisplayMeta;
 import net.momirealms.craftengine.core.pack.model.generation.display.DisplayPosition;
@@ -10,9 +9,9 @@ import net.momirealms.craftengine.core.plugin.config.ConfigValue;
 import net.momirealms.craftengine.core.plugin.config.KnownResourceException;
 import net.momirealms.craftengine.core.util.EnumUtils;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.util.VectorUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3f;
 
 import java.util.*;
 import java.util.function.Supplier;
@@ -120,11 +119,11 @@ public final class ModelGeneration implements Supplier<JsonObject> {
                 JsonObject displayMetadata = new JsonObject();
                 DisplayMeta meta = entry.getValue();
                 if (meta.rotation() != null)
-                    displayMetadata.add("rotation", vectorToJsonArray(meta.rotation()));
+                    displayMetadata.add("rotation", VectorUtils.toJson(meta.rotation()));
                 if (meta.translation() != null)
-                    displayMetadata.add("translation", vectorToJsonArray(meta.translation()));
+                    displayMetadata.add("translation", VectorUtils.toJson(meta.translation()));
                 if (meta.scale() != null)
-                    displayMetadata.add("scale", vectorToJsonArray(meta.scale()));
+                    displayMetadata.add("scale", VectorUtils.toJson(meta.scale()));
                 displays.add(entry.getKey().name().toLowerCase(Locale.ROOT), displayMetadata);
             }
             model.add("display", displays);
@@ -133,14 +132,6 @@ public final class ModelGeneration implements Supplier<JsonObject> {
             model.addProperty("gui_light", this.guiLight.name().toLowerCase(Locale.ROOT));
         }
         return model;
-    }
-
-    private JsonArray vectorToJsonArray(Vector3f vector) {
-        JsonArray array = new JsonArray();
-        array.add(vector.x());
-        array.add(vector.y());
-        array.add(vector.z());
-        return array;
     }
 
     @Override

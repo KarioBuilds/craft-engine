@@ -37,8 +37,20 @@ public final class CraftEngineItems {
      * @return the custom item
      */
     @Nullable
-    public static BukkitItemDefinition byId(@NotNull Key id) {
+    public static BukkitItemDefinition byId(@NotNull final Key id) {
         return (BukkitItemDefinition) BukkitItemManager.instance().getItemDefinition(id).orElse(null);
+    }
+
+    /**
+     * Gets a custom item by ID
+     */
+    @Nullable
+    public static BukkitItemDefinition byId(@NotNull final String id) {
+        if (id.contains(":")) {
+            return byId(Key.of(id));
+        } else {
+            return (BukkitItemDefinition) BukkitItemManager.instance().getItemDefinitionByPath(id).orElse(null);
+        }
     }
 
     /**

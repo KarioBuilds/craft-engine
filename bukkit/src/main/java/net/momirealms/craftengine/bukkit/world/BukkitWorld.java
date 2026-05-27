@@ -43,6 +43,8 @@ public final class BukkitWorld implements World {
     private final WeakReference<org.bukkit.World> bukkitWorld;
     private final WeakReference<Object> minecraftWorld;
     private final UUID uuid;
+    private final String worldName;
+    private final Path worldFolder;
     private CEWorld ceWorld;
     private WorldHeight worldHeight;
 
@@ -50,6 +52,8 @@ public final class BukkitWorld implements World {
         this.bukkitWorld = new WeakReference<>(bukkitWorld);
         this.minecraftWorld = new WeakReference<>(CraftWorldProxy.INSTANCE.getWorld(bukkitWorld));
         this.uuid = bukkitWorld.getUID();
+        this.worldName = bukkitWorld.getName();
+        this.worldFolder = bukkitWorld.getWorldFolder().toPath(); // 低版本没有直接获取path
     }
 
     @Override
@@ -83,7 +87,7 @@ public final class BukkitWorld implements World {
     public Chunk getChunkIfLoaded(int x, int z) {
         Object chunkSource = ServerLevelProxy.INSTANCE.getChunkSource(this.minecraftWorld());
         Object levelChunk;
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
             levelChunk = ServerChunkCacheProxy.INSTANCE.getChunkAtIfLoadedImmediately(chunkSource, x, z);
         } else {
             levelChunk = ServerChunkCacheProxy.INSTANCE.getChunkAtIfLoadedMainThread(chunkSource, x, z);
@@ -105,24 +109,24 @@ public final class BukkitWorld implements World {
 
     @Override
     public String name() {
-        return platformWorld().getName();
+        return this.worldName;
     }
 
     @Override
     public Path directory() {
-        return platformWorld().getWorldFolder().toPath();
+        return this.worldFolder;
     }
 
     @Override
     public UUID uuid() {
-        return platformWorld().getUID();
+        return this.uuid;
     }
 
     @Override
     public void dropItemNaturally(Position location, Item item) {
         ItemStack itemStack = ItemStackProxy.INSTANCE.getBukkitStack(item.minecraftItem());
         if (ItemStackUtils.isEmpty(itemStack)) return;
-        if (VersionHelper.isOrAbove1_21_2()) {
+        if (VersionHelper.isOrAbove1_21_2) {
             platformWorld().dropItemNaturally(new Location(null, location.x(), location.y(), location.z()), itemStack);
         } else {
             platformWorld().dropItemNaturally(new Location(null, location.x() - 0.5, location.y() - 0.5, location.z() - 0.5), itemStack);

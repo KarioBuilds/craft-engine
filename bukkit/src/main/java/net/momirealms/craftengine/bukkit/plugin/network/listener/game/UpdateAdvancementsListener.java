@@ -5,14 +5,14 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
-import net.momirealms.craftengine.core.advancement.network.AdvancementHolder;
-import net.momirealms.craftengine.core.advancement.network.AdvancementProgress;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.context.NetworkTextReplaceContext;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
 import net.momirealms.craftengine.core.plugin.network.event.ByteBufPacketEvent;
 import net.momirealms.craftengine.core.plugin.network.listener.ByteBufferPacketListener;
+import net.momirealms.craftengine.core.plugin.network.protocol.advancement.AdvancementHolder;
+import net.momirealms.craftengine.core.plugin.network.protocol.advancement.AdvancementProgress;
 import net.momirealms.craftengine.core.plugin.text.component.ComponentProvider;
 import net.momirealms.craftengine.core.util.*;
 
@@ -59,7 +59,7 @@ public final class UpdateAdvancementsListener implements ByteBufferPacketListene
             Map<Key, AdvancementProgress> progress = buf.readMap(FriendlyByteBuf::readKey, AdvancementProgress::read);
 
             boolean showAdvancement = false;
-            if (VersionHelper.isOrAbove1_21_5()) {
+            if (VersionHelper.isOrAbove1_21_5) {
                 showAdvancement = buf.readBoolean();
             }
 
@@ -72,7 +72,7 @@ public final class UpdateAdvancementsListener implements ByteBufferPacketListene
                     ($, item) -> PacketUtils.writeItem(buf, item)));
             buf.writeCollection(removed, FriendlyByteBuf::writeKey);
             buf.writeMap(progress, FriendlyByteBuf::writeKey, (byteBuf, advancementProgress) -> advancementProgress.write(byteBuf));
-            if (VersionHelper.isOrAbove1_21_5()) {
+            if (VersionHelper.isOrAbove1_21_5) {
                 buf.writeBoolean(showAdvancement);
             }
         }

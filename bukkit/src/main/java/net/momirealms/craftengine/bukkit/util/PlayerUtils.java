@@ -2,13 +2,13 @@ package net.momirealms.craftengine.bukkit.util;
 
 import com.mojang.datafixers.util.Pair;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import net.momirealms.craftengine.bukkit.entity.data.ItemEntityData;
+import net.momirealms.craftengine.bukkit.entity.data.item.ItemEntityData;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
+import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.ItemKeys;
-import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.sound.SoundData;
 import net.momirealms.craftengine.core.sound.SoundSource;
 import net.momirealms.craftengine.core.sound.Sounds;
@@ -96,16 +96,16 @@ public final class PlayerUtils {
 
                 player.sendPackets(List.of(addEntityPacket, itemMetaPacket), false);
                 player.world().playSound(player.position(), Sounds.ENTITY_ITEM_PICKUP, 0.2F, ((RandomUtils.generateRandomFloat() - RandomUtils.generateRandomFloat()) * 0.7F + 1.0F) * 2.0F, SoundSource.PLAYER);
-                CraftEngine.instance().scheduler().sync().runDelayed(() -> {
+                BukkitCraftEngine.instance().scheduler().platform().runDelayed(() -> {
                     player.sendPacket(ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(MiscUtils.init(new IntArrayList(), k -> k.add(entityId))), false);
-                });
+                }, null, (org.bukkit.entity.Player) player.platformPlayer());
             }
             AbstractContainerMenuProxy.INSTANCE.broadcastChanges(PlayerProxy.INSTANCE.getContainerMenu(serverPlayer));
         } else {
             Object droppedItem;
-            if (VersionHelper.isOrAbove1_21_4()) {
-                droppedItem = ServerPlayerProxy.INSTANCE.drop(serverPlayer, item.minecraftItem(), false, false, !VersionHelper.isOrAbove1_21_5(), null);
-            } else if (VersionHelper.isOrAbove1_20_3()) {
+            if (VersionHelper.isOrAbove1_21_4) {
+                droppedItem = ServerPlayerProxy.INSTANCE.drop(serverPlayer, item.minecraftItem(), false, false, !VersionHelper.isOrAbove1_21_5, null);
+            } else if (VersionHelper.isOrAbove1_20_3) {
                 droppedItem = ServerPlayerProxy.INSTANCE.drop$1(serverPlayer, item.minecraftItem(), false, false, true);
             } else {
                 droppedItem = PlayerProxy.INSTANCE.drop(serverPlayer, item.minecraftItem(), false, false, true);
@@ -122,7 +122,7 @@ public final class PlayerUtils {
         Object totemItem = totem.minecraftItem();
         Item previousMainHandItem = player.getItemInHand(InteractionHand.MAIN_HAND);
         boolean isMainHandTotem;
-        if (VersionHelper.isOrAbove1_21_2()) {
+        if (VersionHelper.isOrAbove1_21_2) {
             isMainHandTotem = previousMainHandItem.hasComponent(DataComponentTypes.DEATH_PROTECTION);
         } else {
             isMainHandTotem = previousMainHandItem.id().equals(ItemKeys.TOTEM_OF_UNDYING);

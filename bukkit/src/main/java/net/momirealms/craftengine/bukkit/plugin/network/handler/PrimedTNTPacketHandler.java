@@ -2,10 +2,11 @@ package net.momirealms.craftengine.bukkit.plugin.network.handler;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
-import net.momirealms.craftengine.bukkit.entity.data.PrimedTntData;
+import net.momirealms.craftengine.bukkit.entity.data.item.PrimedTntData;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.ComponentUtils;
+import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
@@ -35,14 +36,14 @@ public final class PrimedTNTPacketHandler implements EntityPacketHandler {
             Object packedItem = packedItems.get(i);
             int entityDataId = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getId(packedItem);
             if (entityDataId == PrimedTntData.BlockState.id()) {
-                Object blockState = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+                Object blockState = EntityUtils.getEntityDataValue(packedItem, PrimedTntData.BlockState);
                 int stateId = BlockStateUtils.blockStateToId(blockState);
-                int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientModEnabled());
+                int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientCustomBlockEnabled());
                 if (newStateId == stateId) continue;
                 SynchedEntityDataProxy.DataValueProxy.INSTANCE.setValue(packedItem, BlockStateUtils.idToBlockState(newStateId));
                 isChanged = true;
             } else if (Config.interceptEntityName() && entityDataId == BaseEntityData.CustomName.id()) {
-                Optional<Object> optionalTextComponent = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+                Optional<Object> optionalTextComponent = EntityUtils.getEntityDataValue(packedItem, BaseEntityData.CustomName);
                 if (optionalTextComponent.isEmpty()) continue;
                 Object textComponent = optionalTextComponent.get();
                 String json = ComponentUtils.minecraftToJson(textComponent);

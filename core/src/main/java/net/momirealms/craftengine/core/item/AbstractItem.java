@@ -13,6 +13,7 @@ import net.momirealms.craftengine.core.item.component.value.Trim;
 import net.momirealms.craftengine.core.item.setting.value.EquipmentData;
 import net.momirealms.craftengine.core.util.Color;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -175,12 +176,18 @@ public abstract class AbstractItem<W extends ItemWrapper> implements Item {
 
     @Override
     public boolean isCustomItem() {
-        return factory.plugin.itemManager().getItemDefinition(id()).isPresent();
+        Optional<ItemDefinition> itemDefinition = this.factory.plugin.itemManager().getItemDefinition(id());
+        return itemDefinition.filter(definition -> !definition.isVanillaItem()).isPresent();
     }
 
     @Override
     public boolean isBlockItem() {
         return factory.isBlockItem(item);
+    }
+
+    @Override
+    public boolean hasPluginTag(Key tag) {
+        return this.factory.hasPluginTag(this.item, tag);
     }
 
     @Override
@@ -530,8 +537,8 @@ public abstract class AbstractItem<W extends ItemWrapper> implements Item {
     }
 
     @Override
-    public boolean hasItemTag(Key itemTag) {
-        return this.factory.hasItemTag(this.item, itemTag);
+    public boolean hasVanillaTag(Key itemTag) {
+        return this.factory.hasVanillaTag(this.item, itemTag);
     }
 
     @Override
@@ -567,8 +574,13 @@ public abstract class AbstractItem<W extends ItemWrapper> implements Item {
     }
 
     @Override
-    public byte[] toByteArray() {
+    public byte[] toBytes() {
         return this.factory.toByteArray(this.item);
+    }
+
+    @Override
+    public CompoundTag toNBT() {
+        return this.factory.toNBT(this.item);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

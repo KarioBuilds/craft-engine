@@ -48,6 +48,9 @@ public final class FurnitureEventListener implements Listener {
      */
     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
     public void onEntitiesLoadEarly(EntitiesLoadEvent event) {
+        if (!event.getChunk().isLoaded()) {
+            return;
+        }
         List<Entity> entities = event.getEntities();
         for (int i = 0, size = entities.size(); i < size; i++) {
             Entity entity = entities.get(i);
@@ -107,7 +110,7 @@ public final class FurnitureEventListener implements Listener {
         Entity[] entities = event.getChunk().getEntities();
         for (Entity entity : entities) {
             if (entity instanceof ItemDisplay itemDisplay) {
-                this.manager.handleMetaEntityUnload(itemDisplay);
+                this.manager.handleMetaEntityUnload(itemDisplay, false);
             } else if (BukkitFurnitureManager.COLLISION_ENTITY_CLASS.isInstance(entity)) {
                 this.manager.handleCollisionEntityUnload(entity);
             }
@@ -120,7 +123,7 @@ public final class FurnitureEventListener implements Listener {
         List<Entity> entities = event.getWorld().getEntities();
         for (Entity entity : entities) {
             if (entity instanceof ItemDisplay itemDisplay) {
-                this.manager.handleMetaEntityUnload(itemDisplay);
+                this.manager.handleMetaEntityUnload(itemDisplay, false);
             } else if (BukkitFurnitureManager.COLLISION_ENTITY_CLASS.isInstance(entity)) {
                 this.manager.handleCollisionEntityUnload(entity);
             }
@@ -131,7 +134,7 @@ public final class FurnitureEventListener implements Listener {
     public void onEntityUnload(EntityRemoveFromWorldEvent event) {
         Entity entity = event.getEntity();
         if (entity instanceof ItemDisplay itemDisplay) {
-            this.manager.handleMetaEntityUnload(itemDisplay);
+            this.manager.handleMetaEntityUnload(itemDisplay, false);
         } else if (BukkitFurnitureManager.COLLISION_ENTITY_CLASS.isInstance(entity)) {
             this.manager.handleCollisionEntityUnload(entity);
         }

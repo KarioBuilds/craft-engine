@@ -2,11 +2,13 @@ package net.momirealms.craftengine.bukkit.plugin.network.id;
 
 import net.momirealms.craftengine.core.plugin.network.ConnectionState;
 import net.momirealms.craftengine.core.plugin.network.PacketFlow;
+import net.momirealms.craftengine.core.plugin.network.id.PacketIds;
 import net.momirealms.craftengine.core.util.VersionHelper;
 
-final class PacketIds1_20_5 implements PacketIds {
+public final class PacketIds1_20_5 implements PacketIds {
+    public static final PacketIds INSTANCE = new PacketIds1_20_5();
 
-    PacketIds1_20_5() {}
+    public PacketIds1_20_5() {}
 
     @Override
     public int clientboundBlockUpdatePacket() {
@@ -225,7 +227,7 @@ final class PacketIds1_20_5 implements PacketIds {
 
     @Override
     public int clientboundLoginFinishedPacket() {
-        return PacketIdHelper.byName(VersionHelper.isOrAbove1_21_2() ? "minecraft:login_finished" : "minecraft:game_profile", ConnectionState.LOGIN, PacketFlow.CLIENTBOUND);
+        return PacketIdHelper.byName(VersionHelper.isOrAbove1_21_2 ? "minecraft:login_finished" : "minecraft:game_profile", ConnectionState.LOGIN, PacketFlow.CLIENTBOUND);
     }
 
     @Override
@@ -375,5 +377,20 @@ final class PacketIds1_20_5 implements PacketIds {
     @Override
     public int serverboundClientInformationPacket$configuration() {
         return PacketIdHelper.byName("minecraft:client_information", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+    }
+
+    @Override
+    public int clientboundRegistryDataPacket() {
+        return PacketIdHelper.byName("minecraft:registry_data", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
+    }
+
+    @Override
+    public int clientboundShowDialogPacket$play() {
+        return PacketIdHelper.byName("minecraft:show_dialog", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+    }
+
+    @Override
+    public int clientboundShowDialogPacket$configuration() {
+        return PacketIdHelper.byName("minecraft:show_dialog", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
     }
 }

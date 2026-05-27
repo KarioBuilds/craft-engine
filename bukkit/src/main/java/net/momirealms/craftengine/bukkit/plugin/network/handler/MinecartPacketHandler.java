@@ -1,11 +1,12 @@
 package net.momirealms.craftengine.bukkit.plugin.network.handler;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.craftengine.bukkit.entity.data.AbstractMinecartData;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
+import net.momirealms.craftengine.bukkit.entity.data.vehicle.minecart.AbstractMinecartData;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.ComponentUtils;
+import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
@@ -26,7 +27,7 @@ import java.util.Optional;
 
 public final class MinecartPacketHandler implements EntityPacketHandler {
     public static final MinecartPacketHandler INSTANCE = new MinecartPacketHandler();
-    private static final BlockStateHandler BLOCK_STATE_HANDLER = VersionHelper.isOrAbove1_21_5() ? BlockStateHandler_1_21_5.INSTANCE : BlockStateHandler_1_20.INSTANCE;
+    private static final BlockStateHandler BLOCK_STATE_HANDLER = VersionHelper.isOrAbove1_21_5 ? BlockStateHandler_1_21_5.INSTANCE : BlockStateHandler_1_20.INSTANCE;
 
     @Override
     public void handleSetEntityData(Player user, ByteBufPacketEvent event) {
@@ -40,7 +41,7 @@ public final class MinecartPacketHandler implements EntityPacketHandler {
             if (BLOCK_STATE_HANDLER.handle(user, packedItem, entityDataId)) {
                 isChanged = true;
             } else if (Config.interceptEntityName() && entityDataId == BaseEntityData.CustomName.id()) {
-                Optional<Object> optionalTextComponent = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+                Optional<Object> optionalTextComponent = EntityUtils.getEntityDataValue(packedItem, BaseEntityData.CustomName);
                 if (optionalTextComponent.isEmpty()) continue;
                 Object textComponent = optionalTextComponent.get();
                 String json = ComponentUtils.minecraftToJson(textComponent);
@@ -69,11 +70,11 @@ public final class MinecartPacketHandler implements EntityPacketHandler {
 
         @Override
         public boolean handle(NetWorkUser user, Object packedItem, int entityDataId) {
-            if (entityDataId != AbstractMinecartData.CustomDisplayBlock.id()) return false;
-            Optional<Object> blockState = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+            if (entityDataId != AbstractMinecartData.CustomDisplayBlockState.id()) return false;
+            Optional<Object> blockState = EntityUtils.getEntityDataValue(packedItem, AbstractMinecartData.CustomDisplayBlockState);
             if (blockState.isEmpty()) return false;
             int stateId = BlockStateUtils.blockStateToId(blockState.get());
-            int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientModEnabled());
+            int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientCustomBlockEnabled());
             if (newStateId == stateId) return false;
             SynchedEntityDataProxy.DataValueProxy.INSTANCE.setValue(packedItem, Optional.of(BlockStateUtils.idToBlockState(newStateId)));
             return true;
@@ -85,9 +86,9 @@ public final class MinecartPacketHandler implements EntityPacketHandler {
 
         @Override
         public boolean handle(NetWorkUser user, Object packedItem, int entityDataId) {
-            if (entityDataId != AbstractMinecartData.DisplayBlock.id()) return false;
-            int stateId = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
-            int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientModEnabled());
+            if (entityDataId != AbstractMinecartData.DisplayBlockState.id()) return false;
+            int stateId = EntityUtils.getEntityDataValue(packedItem, AbstractMinecartData.DisplayBlockState);
+            int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientCustomBlockEnabled());
             if (newStateId == stateId) return false;
             SynchedEntityDataProxy.DataValueProxy.INSTANCE.setValue(packedItem, newStateId);
             return true;

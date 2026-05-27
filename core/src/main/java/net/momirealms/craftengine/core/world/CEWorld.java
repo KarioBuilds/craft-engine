@@ -1,6 +1,8 @@
 package net.momirealms.craftengine.core.world;
 
+import ca.spottedleaf.concurrentutil.collection.MultiThreadedQueue;
 import ca.spottedleaf.concurrentutil.map.ConcurrentLong2ReferenceChainedHashTable;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.tick.TickingBlockEntity;
@@ -14,32 +16,32 @@ import net.momirealms.craftengine.core.world.chunk.storage.WorldDataStorage;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class CEWorld {
     public static final String REGION_DIRECTORY = "craftengine";
     public final World world;
+    public final WorldSettings settings;
     protected final ConcurrentLong2ReferenceChainedHashTable<CEChunk> loadedChunkMap;
     protected final WorldDataStorage worldDataStorage;
     protected final WorldHeight worldHeightAccessor;
-    protected final Set<SectionPos> lightSections = ConcurrentHashMap.newKeySet(128);
+    protected final MultiThreadedQueue<Collection<SectionPos>> pendingLightSectionBatches = new MultiThreadedQueue<>();
+    protected final AtomicBoolean lightUpdateRunning = new AtomicBoolean(false);
     protected final TickersList<TickingBlockEntity> syncTickingBlockEntities = new TickersList<>();
     protected final List<TickingBlockEntity> pendingSyncTickingBlockEntities = new ArrayList<>();
     protected final TickersList<TickingBlockEntity> asyncTickingBlockEntities = new TickersList<>();
     protected final List<TickingBlockEntity> pendingAsyncTickingBlockEntities = new ArrayList<>();
     protected volatile boolean isTickingSyncBlockEntities = false;
     protected volatile boolean isTickingAsyncBlockEntities = false;
-    protected volatile boolean isUpdatingLights = false;
-    protected List<SectionPos> pendingLightSections = new ArrayList<>();
     protected SchedulerTask syncTickTask;
     protected SchedulerTask asyncTickTask;
 
     public CEWorld(World world, StorageAdaptor adaptor) {
-        this.world = world;
-        this.loadedChunkMap = ConcurrentLong2ReferenceChainedHashTable.createWithCapacity(1024, 0.5f);
-        this.worldDataStorage = adaptor.adapt(world);
-        this.worldHeightAccessor = world.worldHeight();
+        this(world, adaptor.adapt(world));
     }
 
     public CEWorld(World world, WorldDataStorage dataStorage) {
@@ -47,14 +49,24 @@ public abstract class CEWorld {
         this.loadedChunkMap = ConcurrentLong2ReferenceChainedHashTable.createWithCapacity(1024, 0.5f);
         this.worldDataStorage = dataStorage;
         this.worldHeightAccessor = world.worldHeight();
+        WorldSettings worldSettings;
+        try {
+            worldSettings = dataStorage.readSettings();
+        } catch (IOException e) {
+            worldSettings = new WorldSettings();
+            CraftEngine.instance().logger().warn("Failed to read settings from world " + this.name(), e);
+        }
+        this.settings = worldSettings;
     }
 
     public void setTicking(boolean ticking) {
         if (ticking) {
             if (this.syncTickTask == null || this.syncTickTask.cancelled())
-                this.syncTickTask = CraftEngine.instance().scheduler().sync().runRepeating(this::syncTick, 1, 1);
+                this.syncTickTask = CraftEngine.instance().scheduler().platform().runRepeating(this::syncTick, 1, 1);
             if (this.asyncTickTask == null || this.asyncTickTask.cancelled())
-                this.asyncTickTask = CraftEngine.instance().scheduler().sync().runAsyncRepeating(this::asyncTick, 1, 1);
+                this.asyncTickTask = CraftEngine.instance().scheduler().platform().runRepeating(() -> {
+                    CraftEngine.instance().scheduler().async().execute(this::asyncTick);
+                }, 1, 1);
         } else {
             if (this.syncTickTask != null && !this.syncTickTask.cancelled())
                 this.syncTickTask.cancel();
@@ -71,7 +83,7 @@ public abstract class CEWorld {
         return this.world.uuid();
     }
 
-    public void save() {
+    public void saveChunks() {
         try {
             for (ConcurrentLong2ReferenceChainedHashTable.TableEntry<CEChunk> entry : this.loadedChunkMap.entrySet()) {
                 CEChunk chunk = entry.getValue();
@@ -85,6 +97,14 @@ public abstract class CEWorld {
         }
     }
 
+    public void saveSettings() {
+        try {
+            this.worldDataStorage.writeSettings(this.settings);
+        } catch (IOException e) {
+            CraftEngine.instance().logger().warn("Failed to save world settings", e);
+        }
+    }
+
     public World world() {
         return this.world;
     }
@@ -94,11 +114,11 @@ public abstract class CEWorld {
     }
 
     public void addLoadedChunk(CEChunk chunk) {
-        this.loadedChunkMap.put(chunk.chunkPos().longKey(), chunk);
+        this.loadedChunkMap.put(chunk.chunkPos.longKey, chunk);
     }
 
     public void removeLoadedChunk(CEChunk chunk) {
-        this.loadedChunkMap.remove(chunk.chunkPos().longKey());
+        this.loadedChunkMap.remove(chunk.chunkPos.longKey);
     }
 
     @Nullable
@@ -172,11 +192,23 @@ public abstract class CEWorld {
     }
 
     public void sectionLightUpdated(Collection<SectionPos> pos) {
-        if (this.isUpdatingLights) {
-            this.pendingLightSections.addAll(pos);
-        } else {
-            this.lightSections.addAll(pos);
+        if (!pos.isEmpty()) {
+            this.pendingLightSectionBatches.offer(pos);
         }
+    }
+
+    @Nullable
+    protected LongOpenHashSet drainPendingLightSections() {
+        LongOpenHashSet sections = new LongOpenHashSet(16);
+        int drained = this.pendingLightSectionBatches.drain(batch -> {
+            for (SectionPos section : batch) {
+                sections.add(section.asLong());
+            }
+        });
+        if (drained == 0) {
+            return null;
+        }
+        return sections;
     }
 
     public WorldHeight worldHeight() {

@@ -8,13 +8,10 @@ import net.momirealms.craftengine.core.item.component.DataComponentKeys;
 import net.momirealms.craftengine.core.item.network.NetworkItemBuildContext;
 import net.momirealms.craftengine.core.item.network.NetworkItemHandler;
 import net.momirealms.craftengine.core.item.network.encrypt.ItemCrypto;
-import net.momirealms.craftengine.core.item.processor.ArgumentsProcessor;
 import net.momirealms.craftengine.core.item.processor.ItemProcessor;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.context.Context;
-import net.momirealms.craftengine.core.plugin.context.ContextHolder;
-import net.momirealms.craftengine.core.plugin.context.ContextKey;
 import net.momirealms.craftengine.core.plugin.context.NetworkTextReplaceContext;
 import net.momirealms.craftengine.core.plugin.text.component.ComponentProvider;
 import net.momirealms.craftengine.core.util.AdventureHelper;
@@ -52,7 +49,7 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
             Object bundleContents = wrapped.getExactComponent(DataComponentTypes.BUNDLE_CONTENTS);
             List<Object> newItems = new ArrayList<>();
             boolean changed = false;
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 for (Object itemTemplate : BundleContentsProxy.INSTANCE.getItems(bundleContents)) {
                     Object previousItem = ItemStackTemplateProxy.INSTANCE.create(itemTemplate);
                     Optional<Item> converted = this.itemManager.c2s(this.itemManager.wrap(previousItem));
@@ -85,7 +82,7 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
             Object containerContents = wrapped.getExactComponent(DataComponentTypes.CONTAINER);
             List<Object> newItems = new ArrayList<>();
             boolean changed = false;
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 for (Object previousItem : ItemContainerContentsProxy.INSTANCE.getItems(containerContents)) {
                     @SuppressWarnings("unchecked")
                     Optional<Object> previousTemplate = (Optional<Object>) previousItem;
@@ -120,37 +117,51 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
             }
         }
 
-        // 先尝试恢复client-bound-material
-        Optional<ItemDefinition> optionalCustomItem = wrapped.getDefinition();
-        if (optionalCustomItem.isPresent()) {
-            BukkitItemDefinition customItem = (BukkitItemDefinition) optionalCustomItem.get();
+        CompoundTag networkData = null;
+
+        // 获取custom data
+        CompoundTag customData = (CompoundTag) wrapped.getComponentAsSparrowTag(DataComponentTypes.CUSTOM_DATA);
+        if (customData != null) {
+            // 先解密
+            networkData = ItemCrypto.decrypt(customData.get(NETWORK_ITEM_TAG));
+            if (networkData != null) {
+                CompoundTag rawCustomDataTag = networkData.getCompound(DataComponentIds.CUSTOM_DATA);
+                // 解密结果里可能有物品id，所以先还原 custom_data
+                if (rawCustomDataTag != null) {
+                    networkData.remove(DataComponentIds.CUSTOM_DATA);
+                    NetworkItemHandler.apply(DataComponentIds.CUSTOM_DATA, rawCustomDataTag, wrapped);
+                    customData = rawCustomDataTag.getCompound(NetworkItemHandler.NETWORK_VALUE);
+                }
+            }
+        }
+
+        Optional<ItemDefinition> itemDefinition = wrapped.getDefinition();
+        // 一定要先尝试恢复client-bound-material，再应用组件变化
+        if (itemDefinition.isPresent()) {
+            BukkitItemDefinition customItem = (BukkitItemDefinition) itemDefinition.get();
             if (customItem.item() != ItemStackProxy.INSTANCE.getItem(wrapped.minecraftItem())) {
                 wrapped = wrapped.unsafeTransmuteCopy(customItem.item(), wrapped.count());
                 forceReturn = true;
             }
         }
 
-        // 获取custom data
-        Tag customData = wrapped.getComponentAsSparrowTag(DataComponentTypes.CUSTOM_DATA);
-        if (customData instanceof CompoundTag compoundTag) {
-            CompoundTag networkData = ItemCrypto.decrypt(compoundTag.get(NETWORK_ITEM_TAG));
-            if (networkData != null) {
-                forceReturn = true;
-                // 移除此tag
-                compoundTag.remove(NETWORK_ITEM_TAG);
+        // 应用组件变化
+        if (networkData != null) {
+            forceReturn = true;
+            // 移除网络 tag
+            customData.remove(NETWORK_ITEM_TAG);
 
-                // 恢复物品
-                for (Map.Entry<String, Tag> entry : networkData.entrySet()) {
-                    if (entry.getValue() instanceof CompoundTag tag) {
-                        NetworkItemHandler.apply(entry.getKey(), tag, wrapped);
-                    }
+            // 恢复物品
+            for (Map.Entry<String, Tag> entry : networkData.entrySet()) {
+                if (entry.getValue() instanceof CompoundTag tag) {
+                    NetworkItemHandler.apply(entry.getKey(), tag, wrapped);
                 }
-
-                // 如果清空了，则直接移除这个组件
-                if (compoundTag.isEmpty()) wrapped.resetComponent(DataComponentTypes.CUSTOM_DATA);
-                // 否则设置为新的
-                else wrapped.setSparrowTagComponent(DataComponentTypes.CUSTOM_DATA, compoundTag);
             }
+
+            // 如果清空了，则直接移除这个组件
+            if (customData.isEmpty()) wrapped.resetComponent(DataComponentTypes.CUSTOM_DATA);
+            // 否则设置为新的
+            else wrapped.setSparrowTagComponent(DataComponentTypes.CUSTOM_DATA, customData);
         }
 
         return forceReturn ? Optional.of(wrapped) : Optional.empty();
@@ -165,7 +176,7 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
             Object bundleContents = wrapped.getExactComponent(DataComponentTypes.BUNDLE_CONTENTS);
             List<Object> newItems = new ArrayList<>();
             boolean changed = false;
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 for (Object itemTemplate : BundleContentsProxy.INSTANCE.getItems(bundleContents)) {
                     Object previousItem = ItemStackTemplateProxy.INSTANCE.create(itemTemplate);
                     Optional<Item> converted = this.itemManager.s2c(this.itemManager.wrap(previousItem), player);
@@ -198,7 +209,7 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
             Object containerContents = wrapped.getExactComponent(DataComponentTypes.CONTAINER);
             boolean changed = false;
             List<Object> newItems = new ArrayList<>();
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 for (Object optionalTemplate : ItemContainerContentsProxy.INSTANCE.getItems(containerContents)) {
                     @SuppressWarnings("unchecked")
                     Optional<Object> previousTemplate = (Optional<Object>) optionalTemplate;
@@ -257,22 +268,8 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
             }
             return new OtherItem(wrapped, forceReturn).process(NetworkTextReplaceContext.of(player));
         }
-        // 获取custom data
-        CompoundTag customData = Optional.ofNullable(wrapped.getComponentAsSparrowTag(DataComponentTypes.CUSTOM_DATA))
-                .map(CompoundTag.class::cast)
-                .orElseGet(CompoundTag::new);
-        CompoundTag arguments = customData.getCompound(ArgumentsProcessor.ARGUMENTS_TAG);
         // 创建context
-        NetworkItemBuildContext context;
-        if (arguments == null) {
-            context = NetworkItemBuildContext.of(player);
-        } else {
-            ContextHolder.Builder builder = ContextHolder.builder();
-            for (Map.Entry<String, Tag> entry : arguments.entrySet()) {
-                builder.withParameter(ContextKey.direct(entry.getKey()), entry.getValue().getAsString());
-            }
-            context = NetworkItemBuildContext.of(player, builder);
-        }
+        NetworkItemBuildContext context = NetworkItemBuildContext.of(player);
         // 准备阶段
         CompoundTag tag = new CompoundTag();
         for (ItemProcessor modifier : customItem.clientBoundProcessors()) {
@@ -281,15 +278,15 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
         // 如果拦截物品的描述名称等
         if (Config.interceptItem()) {
             if (wrapped.hasComponent(DataComponentTypes.ITEM_NAME)) {
-                if (VersionHelper.isOrAbove1_21_5()) processModernItemName(wrapped, () -> tag, context);
+                if (VersionHelper.isOrAbove1_21_5) processModernItemName(wrapped, () -> tag, context);
                 else processLegacyItemName(wrapped, () -> tag, context);
             }
             if (wrapped.hasComponent(DataComponentTypes.CUSTOM_NAME)) {
-                if (VersionHelper.isOrAbove1_21_5()) processModernCustomName(wrapped, () -> tag, context);
+                if (VersionHelper.isOrAbove1_21_5) processModernCustomName(wrapped, () -> tag, context);
                 else processLegacyCustomName(wrapped, () -> tag, context);
             }
             if (wrapped.hasComponent(DataComponentTypes.LORE)) {
-                if (VersionHelper.isOrAbove1_21_5()) processModernLore(wrapped, () -> tag, context);
+                if (VersionHelper.isOrAbove1_21_5) processModernLore(wrapped, () -> tag, context);
                 else processLegacyLore(wrapped, () -> tag, context);
             }
         }
@@ -299,6 +296,9 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
         }
         // 如果tag不空，则需要返回
         if (!tag.isEmpty()) {
+            CompoundTag customData = Optional.ofNullable(wrapped.getComponentAsSparrowTag(DataComponentTypes.CUSTOM_DATA))
+                    .map(CompoundTag.class::cast)
+                    .orElseGet(CompoundTag::new);
             customData.put(NETWORK_ITEM_TAG, ItemCrypto.encrypt(tag));
             wrapped.setSparrowTagComponent(DataComponentTypes.CUSTOM_DATA, customData);
             forceReturn = true;
@@ -422,7 +422,7 @@ public final class ModernNetworkItemHandler implements NetworkItemHandler {
         }
 
         public Optional<Item> process(Context context) {
-            if (VersionHelper.isOrAbove1_21_5()) {
+            if (VersionHelper.isOrAbove1_21_5) {
                 if (processModernLore(this.item, this::getOrCreateTag, context))
                     this.globalChanged = true;
                 if (processModernCustomName(this.item, this::getOrCreateTag, context))

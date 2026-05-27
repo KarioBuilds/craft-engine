@@ -18,6 +18,8 @@ import net.momirealms.craftengine.core.item.network.encrypt.AESGCM;
 import net.momirealms.craftengine.core.item.network.encrypt.ChaCha20;
 import net.momirealms.craftengine.core.item.network.encrypt.ItemCrypto;
 import net.momirealms.craftengine.core.item.network.encrypt.Xor;
+import net.momirealms.craftengine.core.item.processor.ItemProcessor;
+import net.momirealms.craftengine.core.item.processor.ItemProcessors;
 import net.momirealms.craftengine.core.pack.AbstractPackManager;
 import net.momirealms.craftengine.core.pack.conflict.resolution.ConditionalResolution;
 import net.momirealms.craftengine.core.pack.host.HttpClientManager;
@@ -64,6 +66,8 @@ public final class Config {
     private boolean debug$resource_pack;
     private boolean debug$block;
     private boolean debug$entity_culling;
+    private boolean debug$chunk;
+    private boolean debug$print_stack_trace;
     private Set<String> debug$ignored_packets;
 
     private boolean resource_pack$remove_tinted_leaves_particle;
@@ -97,12 +101,16 @@ public final class Config {
     private boolean resource_pack$validation$fallback_models$fix_element_rotation_angle;
     private boolean resource_pack$exclude_core_shaders;
 
+    public boolean resource_pack$pack_squash$enable;
+    public Path resource_pack$pack_squash$software_path;
+    public Path resource_pack$pack_squash$config_path;
+
     private boolean resource_pack$protection$obfuscation$enable;
     private long resource_pack$protection$obfuscation$seed;
     private boolean resource_pack$protection$fake_directory;
     private boolean resource_pack$protection$escape_json;
     private boolean resource_pack$protection$break_texture;
-    private boolean resource_pack$protection$anti_unzip;
+    private boolean resource_pack$protection$obfuscation$path$anti_unzip;
     private boolean resource_pack$protection$incorrect_crc;
     private boolean resource_pack$protection$fake_file_size;
     private NumberProvider resource_pack$protection$obfuscation$overlay$length;
@@ -112,15 +120,14 @@ public final class Config {
     private String resource_pack$protection$obfuscation$path$item_source;
     private NumberProvider resource_pack$protection$obfuscation$path$depth;
     private NumberProvider resource_pack$protection$obfuscation$path$length;
-    private boolean resource_pack$protection$obfuscation$item_model$enable;
-    private NumberProvider resource_pack$protection$obfuscation$item_model$depth;
-    private NumberProvider resource_pack$protection$obfuscation$item_model$length;
+    private boolean resource_pack$protection$obfuscation$obfuscate_item_model;
     private int resource_pack$protection$obfuscation$atlas$images_per_canvas;
     private String resource_pack$protection$obfuscation$atlas$prefix;
     private List<String> resource_pack$protection$obfuscation$bypass_textures;
     private List<String> resource_pack$protection$obfuscation$bypass_models;
     private List<String> resource_pack$protection$obfuscation$bypass_sounds;
     private List<String> resource_pack$protection$obfuscation$bypass_equipments;
+    private List<String> resource_pack$protection$obfuscation$bypass_item_models;
 
     private boolean resource_pack$optimization$enable;
     private boolean resource_pack$optimization$texture$enable;
@@ -146,7 +153,7 @@ public final class Config {
     private String resource_pack$delivery$proxy$username;
     private String resource_pack$delivery$proxy$password;
     private String resource_pack$delivery$proxy$scheme;
-    private Component resource_pack$send$prompt;
+    private Component resource_pack$delivery$prompt;
 
     private int chunk_system$compression_method;
     private boolean chunk_system$restore_vanilla_blocks_on_chunk_unload;
@@ -159,6 +166,11 @@ public final class Config {
     private boolean chunk_system$process_invalid_blocks$enable;
     private Map<String, String> chunk_system$process_invalid_blocks$mapping;
     private StorageType chunk_system$storage_type;
+    private boolean chunk_system$generation$noise;
+    private boolean chunk_system$generation$structure;
+    private boolean chunk_system$generation$surface;
+    private boolean chunk_system$generation$carver;
+    private boolean chunk_system$generation$feature;
 
     private boolean furniture$hide_base_entity;
     private ColliderType furniture$collision_entity_type;
@@ -213,10 +225,12 @@ public final class Config {
     private boolean network$intercept_packets$item;
     private boolean network$intercept_packets$advancement;
     private boolean network$intercept_packets$player_chat;
+    private boolean network$intercept_packets$dialog;
     private boolean network$disable_item_operations;
     private boolean network$disable_chat_report;
-    private boolean network$mod_channel$enable;
     private boolean network$mod_channel$requires_permission;
+    private boolean network$mod_channel$logging_permission_denied;
+    private int network$mod_channel$creative_tab_max_items_per_packet;
     private boolean network$item_crypto$enable;
 
     private boolean item$client_bound_model;
@@ -364,7 +378,9 @@ public final class Config {
         this.debug$resource_pack = config.getBoolean("debug.resource-pack", false);
         this.debug$block = config.getBoolean("debug.block", false);
         this.debug$entity_culling = config.getBoolean("debug.entity-culling", false);
+        this.debug$chunk = config.getBoolean("debug.chunk", false);
         this.debug$ignored_packets = new HashSet<>(config.getStringList("debug.ignored-packets"));
+        this.debug$print_stack_trace = config.getBoolean("debug.print-stack-trace", false);
 
         // resource pack
         this.resource_pack$path = resolvePath(config.getString("resource-pack.path", "./generated/resource_pack.zip"));
@@ -402,7 +418,10 @@ public final class Config {
                 this.resource_pack$delivery$proxy$username,
                 this.resource_pack$delivery$proxy$password
         );
-        this.resource_pack$send$prompt = AdventureHelper.miniMessage().deserialize(config.getString("resource-pack.delivery.prompt", "<yellow>To fully experience our server, please accept our custom resource pack.</yellow>"));
+        this.resource_pack$delivery$prompt = AdventureHelper.miniMessage().deserialize(config.getString("resource-pack.delivery.prompt", "<yellow>To fully experience our server, please accept our custom resource pack.</yellow>"));
+        this.resource_pack$pack_squash$enable = config.getBoolean("resource-pack.pack-squash.enable", false);
+        this.resource_pack$pack_squash$software_path = resolvePath(config.getString("resource-pack.pack-squash.software-path", "./packsquash/packsquash.exe"));
+        this.resource_pack$pack_squash$config_path = resolvePath(config.getString("resource-pack.pack-squash.config-path", "./packsquash/config.toml"));
         this.resource_pack$protection$unprotected_copy$enable = config.getBoolean("resource-pack.protection.unprotected-copy.enable", false);
         this.resource_pack$protection$unprotected_copy$path = resolvePath(config.getString("resource-pack.protection.unprotected-copy.path", "./generated/unprotected_resource_pack.zip"));
         this.resource_pack$protection$crash_tools$method_1 = config.getBoolean("resource-pack.protection.crash-tools.method-1", false);
@@ -416,7 +435,6 @@ public final class Config {
         this.resource_pack$protection$crash_tools$method_9 = config.getBoolean("resource-pack.protection.crash-tools.method-9", false);
         this.resource_pack$protection$obfuscation$enable = VersionHelper.PREMIUM && config.getBoolean("resource-pack.protection.obfuscation.enable", false);
         this.resource_pack$protection$obfuscation$seed = config.getLong("resource-pack.protection.obfuscation.seed", 0L);
-        this.resource_pack$protection$anti_unzip = config.getBoolean("resource-pack.protection.anti-unzip", false);
         this.resource_pack$protection$fake_directory = config.getBoolean("resource-pack.protection.fake-directory", false);
         this.resource_pack$protection$escape_json = config.getBoolean("resource-pack.protection.escape-json", false);
         this.resource_pack$protection$break_texture = config.getBoolean("resource-pack.protection.break-texture", false);
@@ -427,9 +445,8 @@ public final class Config {
         this.resource_pack$protection$obfuscation$overlay$length = NumberProviders.fromConfig(ConfigValue.of("resource-pack.protection.obfuscation.overlay.length", config.get("resource-pack.protection.obfuscation.overlay.length", 4)));
         this.resource_pack$protection$obfuscation$path$depth = NumberProviders.fromConfig(ConfigValue.of("resource-pack.protection.obfuscation.path.depth", config.get("resource-pack.protection.obfuscation.path.depth", 4)));
         this.resource_pack$protection$obfuscation$path$length = NumberProviders.fromConfig(ConfigValue.of("resource-pack.protection.obfuscation.path.length", config.get("resource-pack.protection.obfuscation.path.length", 2)));
-        this.resource_pack$protection$obfuscation$item_model$enable = config.getBoolean("resource-pack.protection.obfuscation.item-model.enable", false) && this.resource_pack$protection$obfuscation$enable;
-        this.resource_pack$protection$obfuscation$item_model$depth = NumberProviders.fromConfig(ConfigValue.of("resource-pack.protection.obfuscation.item-model.depth", config.get("resource-pack.protection.obfuscation.item-model.depth", 2)));
-        this.resource_pack$protection$obfuscation$item_model$length = NumberProviders.fromConfig(ConfigValue.of("resource-pack.protection.obfuscation.item-model.length", config.get("resource-pack.protection.obfuscation.item-model.length", 4)));
+        this.resource_pack$protection$obfuscation$path$anti_unzip = config.getBoolean("resource-pack.protection.obfuscation.path.anti-unzip", false);
+        this.resource_pack$protection$obfuscation$obfuscate_item_model = config.getBoolean("resource-pack.protection.obfuscation.obfuscate-item-model", false) && this.resource_pack$protection$obfuscation$enable;
         this.resource_pack$protection$obfuscation$path$block_source = config.getString("resource-pack.protection.obfuscation.path.block-source", "obf_block");
         this.resource_pack$protection$obfuscation$path$item_source = config.getString("resource-pack.protection.obfuscation.path.block-source", "obf_item");
         this.resource_pack$protection$obfuscation$atlas$images_per_canvas = Math.max(0, config.getInt("resource-pack.protection.obfuscation.atlas.images-per-canvas", 256));
@@ -438,6 +455,7 @@ public final class Config {
         this.resource_pack$protection$obfuscation$bypass_models = config.getStringList("resource-pack.protection.obfuscation.bypass-models");
         this.resource_pack$protection$obfuscation$bypass_sounds = config.getStringList("resource-pack.protection.obfuscation.bypass-sounds");
         this.resource_pack$protection$obfuscation$bypass_equipments = config.getStringList("resource-pack.protection.obfuscation.bypass-equipments");
+        this.resource_pack$protection$obfuscation$bypass_item_models = config.getStringList("resource-pack.protection.obfuscation.bypass-item-models");
         this.resource_pack$optimization$enable = config.getBoolean("resource-pack.optimization.enable", false);
         this.resource_pack$optimization$texture$enable = config.getBoolean("resource-pack.optimization.texture.enable", true);
         this.resource_pack$optimization$texture$zopfli_iterations = config.getInt("resource-pack.optimization.texture.zopfli-iterations", 0);
@@ -530,6 +548,12 @@ public final class Config {
         }
         this.chunk_system$process_invalid_blocks$mapping = blockBuilder.build();
 
+        this.chunk_system$generation$feature = config.getBoolean("chunk-system.generation.feature", true);
+        this.chunk_system$generation$carver = config.getBoolean("chunk-system.generation.carver", true);
+        this.chunk_system$generation$noise = config.getBoolean("chunk-system.generation.noise", true);
+        this.chunk_system$generation$structure = config.getBoolean("chunk-system.generation.structure", true);
+        this.chunk_system$generation$surface = config.getBoolean("chunk-system.generation.surface", true);
+
         // furniture
         this.furniture$hide_base_entity = config.getBoolean("furniture.hide-base-entity", true);
         this.furniture$collision_entity_type = ColliderType.valueOf(config.getString("furniture.collision-entity-type", "interaction").toUpperCase(Locale.ENGLISH));
@@ -562,9 +586,9 @@ public final class Config {
         this.item$update_triggers$drop = config.getBoolean("item.update-triggers.drop", false);
         this.item$update_triggers$pick_up = config.getBoolean("item.update-triggers.pick-up", false);
         this.item$custom_model_data_starting_value$default = config.getInt("item.custom-model-data-starting-value.default", 10000);
-        this.item$always_use_item_model = config.getBoolean("item.always-use-item-model", true) && VersionHelper.isOrAbove1_21_2();
+        this.item$always_use_item_model = config.getBoolean("item.always-use-item-model", true) && VersionHelper.isOrAbove1_21_2;
         this.item$always_generate_model_overrides = config.getBoolean("item.always-generate-model-overrides", false);
-        this.item$always_use_custom_model_data = this.item$always_generate_model_overrides || (config.getBoolean("item.always-use-custom-model-data", false) && VersionHelper.isOrAbove1_21_2());
+        this.item$always_use_custom_model_data = this.item$always_generate_model_overrides || (config.getBoolean("item.always-use-custom-model-data", false) && VersionHelper.isOrAbove1_21_2);
         this.item$default_material = Key.of(config.getString("item.default-material", "nether_brick"));
         this.item$default_drop_display$enable = config.getBoolean("item.default-drop-display.enable", false);
         this.item$default_drop_display$format = this.item$default_drop_display$enable ? config.getString("item.default-drop-display.format", "<arg:count>x <name>"): null;
@@ -682,8 +706,10 @@ public final class Config {
         this.network$intercept_packets$item = config.getBoolean("network.intercept-packets.item", true);
         this.network$intercept_packets$advancement = config.getBoolean("network.intercept-packets.advancement", true);
         this.network$intercept_packets$player_chat = config.getBoolean("network.intercept-packets.player-chat", true);
-        this.network$mod_channel$enable = config.getBoolean("network.mod-channel.enable", true);
+        this.network$intercept_packets$dialog = config.getBoolean("network.intercept-packets.dialog", true);
         this.network$mod_channel$requires_permission = config.getBoolean("network.mod-channel.requires-permission", true);
+        this.network$mod_channel$logging_permission_denied = config.getBoolean("network.mod-channel.logging-permission-denied", true);
+        this.network$mod_channel$creative_tab_max_items_per_packet = Math.max(config.getInt("network.mod-channel.creative-tab-max-items-per-packet", 10), 1);
         if (this.firstTime) {
             this.network$item_crypto$enable = config.getBoolean("network.item-crypto.enable", false);
             if (this.network$item_crypto$enable) {
@@ -776,8 +802,16 @@ public final class Config {
         return instance.debug$furniture;
     }
 
+    public static boolean debugChunk() {
+        return instance.debug$chunk;
+    }
+
     public static boolean debugResourcePack() {
         return instance.debug$resource_pack;
+    }
+
+    public static boolean debugPrintStackTrace() {
+        return instance.debug$print_stack_trace;
     }
 
     public static boolean checkUpdate() {
@@ -925,7 +959,7 @@ public final class Config {
     }
 
     public static Component resourcePackPrompt() {
-        return instance.resource_pack$send$prompt;
+        return instance.resource_pack$delivery$prompt;
     }
 
     public static boolean sendPackOnJoin() {
@@ -1031,16 +1065,8 @@ public final class Config {
         return instance.resource_pack$protection$obfuscation$path$length;
     }
 
-    public static NumberProvider itemModelLength() {
-        return instance.resource_pack$protection$obfuscation$item_model$length;
-    }
-
-    public static NumberProvider itemModelDepth() {
-        return instance.resource_pack$protection$obfuscation$item_model$depth;
-    }
-
     public static boolean obfuscateItemModel() {
-        return instance.resource_pack$protection$obfuscation$item_model$enable;
+        return instance.resource_pack$protection$obfuscation$obfuscate_item_model;
     }
 
     public static NumberProvider overlayLength() {
@@ -1048,7 +1074,7 @@ public final class Config {
     }
 
     public static boolean antiUnzip() {
-        return instance.resource_pack$protection$anti_unzip;
+        return instance.resource_pack$protection$obfuscation$path$anti_unzip;
     }
 
     public static boolean incorrectCrc() {
@@ -1081,6 +1107,10 @@ public final class Config {
 
     public static List<String> bypassEquipments() {
         return instance.resource_pack$protection$obfuscation$bypass_equipments;
+    }
+
+    public static List<String> bypassItemModels() {
+        return instance.resource_pack$protection$obfuscation$bypass_item_models;
     }
 
     public static Key deceiveBukkitMaterial(int id) {
@@ -1149,12 +1179,16 @@ public final class Config {
         return instance.network$disable_chat_report;
     }
 
-    public static boolean enableModChannel() {
-        return instance.network$mod_channel$enable;
-    }
-
     public static boolean modChannelRequiresPermission() {
         return instance.network$mod_channel$requires_permission;
+    }
+
+    public static boolean modChannelLoggingPermissionDenied() {
+        return instance.network$mod_channel$logging_permission_denied;
+    }
+
+    public static int modChannelCreativeTabMaxItemsPerPacket() {
+        return instance.network$mod_channel$creative_tab_max_items_per_packet;
     }
 
     public static boolean enableItemCrypto() {
@@ -1227,6 +1261,10 @@ public final class Config {
 
     public static boolean interceptPlayerChat() {
         return instance.network$intercept_packets$player_chat;
+    }
+
+    public static boolean interceptDialog() {
+        return instance.network$intercept_packets$dialog;
     }
 
     public static boolean predictBreaking() {
@@ -1501,12 +1539,36 @@ public final class Config {
         return instance.resource_pack$delivery$proxy$scheme;
     }
 
-    public YamlDocument loadOrCreateYamlData(String fileName) {
-        Path path = this.plugin.dataFolderPath().resolve(fileName);
-        if (!Files.exists(path)) {
-            this.plugin.saveResource(fileName);
-        }
-        return this.loadYamlData(path);
+    public static boolean enablePackSquash() {
+        return instance.resource_pack$pack_squash$enable;
+    }
+
+    public static Path packSquashPath() {
+        return instance.resource_pack$pack_squash$software_path;
+    }
+
+    public static Path packSquashConfigPath() {
+        return instance.resource_pack$pack_squash$config_path;
+    }
+
+    public static boolean generationNoise() {
+        return instance.chunk_system$generation$noise;
+    }
+
+    public static boolean generationStructure() {
+        return instance.chunk_system$generation$structure;
+    }
+
+    public static boolean generationCarver() {
+        return instance.chunk_system$generation$carver;
+    }
+
+    public static boolean generationFeature() {
+        return instance.chunk_system$generation$feature;
+    }
+
+    public static boolean generationSurface() {
+        return instance.chunk_system$generation$surface;
     }
 
     public YamlDocument loadYamlConfig(String filePath, GeneralSettings generalSettings, LoaderSettings loaderSettings, DumperSettings dumperSettings, UpdaterSettings updaterSettings) {

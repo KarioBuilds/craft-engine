@@ -6,7 +6,6 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.InteractUtils;
-import net.momirealms.craftengine.bukkit.util.LevelUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -89,7 +88,7 @@ public final class TrapDoorBlockBehavior extends BukkitBlockBehavior implements 
         if (this.waterloggedProperty != null) {
             BlockStateUtils.getOptionalCustomBlockState(blockState).ifPresent(customState -> {
                 if (customState.get(this.waterloggedProperty)) {
-                    LevelUtils.scheduleFluidTick(args[updateShape$level], args[updateShape$blockPos], FluidsProxy.WATER, 5);
+                    LevelAccessorProxy.INSTANCE.scheduleTick$1(args[updateShape$level], args[updateShape$blockPos], FluidsProxy.WATER, 5);
                 }
             });
         }
@@ -143,7 +142,7 @@ public final class TrapDoorBlockBehavior extends BukkitBlockBehavior implements 
 
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
-        Object type = VersionHelper.isOrAbove1_20_5() ? args[1] : args[3];
+        Object type = VersionHelper.isOrAbove1_20_5 ? args[1] : args[3];
         Object blockState = args[0];
         Optional<ImmutableBlockState> optionalCustomState = BlockStateUtils.getOptionalCustomBlockState(blockState);
         if (optionalCustomState.isEmpty()) return false;
@@ -215,7 +214,7 @@ public final class TrapDoorBlockBehavior extends BukkitBlockBehavior implements 
 
         LevelWriterProxy.INSTANCE.setBlock(level, blockPos, customState.with(this.poweredProperty, hasSignal).customBlockState().minecraftState(), UpdateFlags.UPDATE_CLIENTS);
         if (this.waterloggedProperty != null && customState.get(this.waterloggedProperty)) {
-            LevelUtils.scheduleFluidTick(level, blockPos, FluidsProxy.WATER, 5);
+            LevelAccessorProxy.INSTANCE.scheduleTick$1(level, blockPos, FluidsProxy.WATER, 5);
         }
     }
 

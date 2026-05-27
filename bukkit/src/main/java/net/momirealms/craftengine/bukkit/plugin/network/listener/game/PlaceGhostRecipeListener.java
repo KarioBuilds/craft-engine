@@ -4,11 +4,11 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.item.recipe.network.modern.display.RecipeDisplay;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
 import net.momirealms.craftengine.core.plugin.network.event.ByteBufPacketEvent;
 import net.momirealms.craftengine.core.plugin.network.listener.ByteBufferPacketListener;
+import net.momirealms.craftengine.core.plugin.network.protocol.recipe.modern.display.RecipeDisplay;
 import net.momirealms.craftengine.core.util.FriendlyByteBuf;
 import net.momirealms.craftengine.core.util.MutableBoolean;
 import net.momirealms.craftengine.core.util.VersionHelper;
@@ -23,7 +23,7 @@ public final class PlaceGhostRecipeListener implements ByteBufferPacketListener 
     @Override
     public void onPacketSend(NetWorkUser user, ByteBufPacketEvent event) {
         if (Config.disableItemOperations()) return;
-        if (!VersionHelper.isOrAbove1_21_2()) return;
+        if (!VersionHelper.isOrAbove1_21_2) return;
         MutableBoolean changed = new MutableBoolean(false);
         FriendlyByteBuf buf = event.getBuffer();
         BukkitServerPlayer player = (BukkitServerPlayer) user;

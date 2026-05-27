@@ -12,6 +12,7 @@ import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.momirealms.craftengine.core.util.Color;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
 
 import java.util.List;
@@ -183,7 +184,7 @@ public abstract class ItemFactory<W extends ItemWrapper> {
 
     protected abstract void maxStackSize(W item, Integer maxStackSize);
 
-    protected abstract boolean hasItemTag(W item, Key itemTag);
+    protected abstract boolean hasVanillaTag(W item, Key itemTag);
 
     protected abstract boolean isBlockItem(W item);
 
@@ -221,6 +222,8 @@ public abstract class ItemFactory<W extends ItemWrapper> {
 
     protected abstract byte[] toByteArray(W item);
 
+    protected abstract CompoundTag toNBT(W item);
+
     protected abstract W transmuteCopy(W item, Key newItem, int amount);
 
     protected abstract W unsafeTransmuteCopy(W item, Object newItem, int count);
@@ -234,4 +237,6 @@ public abstract class ItemFactory<W extends ItemWrapper> {
     protected abstract void blockState(W item, Map<String, String> state);
 
     protected abstract boolean isSimilar(W item1, W item2);
+
+    protected abstract boolean hasPluginTag(W item, Key tag);
 }

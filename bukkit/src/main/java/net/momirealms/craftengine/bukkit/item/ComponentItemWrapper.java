@@ -56,7 +56,7 @@ public final class ComponentItemWrapper extends BukkitItemWrapper {
         Object componentMap = ItemProxy.INSTANCE.components(item);
         Object componentType = ensureDataComponentType(type);
         Object defaultComponent;
-        if (VersionHelper.isOrAbove1_21_5()) {
+        if (VersionHelper.isOrAbove1_21_5) {
             defaultComponent = DataComponentGetterProxy.INSTANCE.get(componentMap, componentType);
         } else {
             defaultComponent = DataComponentMapProxy.INSTANCE.get(componentMap, componentType);
@@ -99,7 +99,7 @@ public final class ComponentItemWrapper extends BukkitItemWrapper {
 
     private <T> Optional<T> getComponentInternal(Object type, DynamicOps<T> ops) {
         Object componentType = ensureDataComponentType(type);
-        Codec<T> codec = DataComponentTypeProxy.INSTANCE.codec(componentType);
+        Codec<T> codec = DataComponentTypeProxy.INSTANCE.codecOrThrow(componentType);
         try {
             T componentData = ItemStackProxy.INSTANCE.get(minecraftItem(), componentType);
             if (componentData == null) return Optional.empty();
@@ -115,14 +115,14 @@ public final class ComponentItemWrapper extends BukkitItemWrapper {
     }
 
     public boolean hasNonDefaultComponent(Object type) {
-        if (VersionHelper.isOrAbove1_21_4()) {
+        if (VersionHelper.isOrAbove1_21_4) {
             return ItemStackProxy.INSTANCE.hasNonDefault(minecraftItem(), ensureDataComponentType(type));
         } else {
             Object item = ItemStackProxy.INSTANCE.getItem(this.minecraftItem());
             Object componentMap = ItemProxy.INSTANCE.components(item);
             Object componentType = ensureDataComponentType(type);
             Object defaultComponent;
-            if (VersionHelper.isOrAbove1_21_5()) {
+            if (VersionHelper.isOrAbove1_21_5) {
                 defaultComponent = DataComponentGetterProxy.INSTANCE.get(componentMap, componentType);
             } else {
                 defaultComponent = DataComponentMapProxy.INSTANCE.get(componentMap, componentType);
@@ -157,7 +157,7 @@ public final class ComponentItemWrapper extends BukkitItemWrapper {
         if (componentType == null) {
             return;
         }
-        Codec<T> codec = DataComponentTypeProxy.INSTANCE.codec(componentType);
+        Codec<T> codec = DataComponentTypeProxy.INSTANCE.codecOrThrow(componentType);
         try {
             DataResult<T> result = codec.parse(ops, value);
             if (result.isError()) {

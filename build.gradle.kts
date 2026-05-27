@@ -9,10 +9,12 @@ plugins {
 
 subprojects {
 
-    apply(plugin = "java")
-    apply(plugin = "java-library")
-    apply(plugin = "com.gradleup.shadow")
-    apply(plugin = "maven-publish")
+    apply {
+        plugin("java")
+        plugin("java-library")
+        plugin("com.gradleup.shadow")
+        plugin("maven-publish")
+    }
 
     repositories {
         mavenCentral()
@@ -29,12 +31,11 @@ subprojects {
     }
 
     java {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25)
         }
         withSourcesJar()
+        disableAutoTargetJvm()
     }
 
     tasks.processResources {

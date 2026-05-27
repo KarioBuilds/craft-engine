@@ -36,11 +36,11 @@ public class CEChunk {
     public final ChunkPos chunkPos;
     protected final CESection[] sections;
     protected final WorldHeight worldHeightAccessor;
-    protected final ConcurrentLong2ReferenceChainedHashTable<BlockEntity> blockEntities;  // 从区域线程上访问，安全
+    protected final ConcurrentLong2ReferenceChainedHashTable<BlockEntity> blockEntities;  // 从区域线程上访问，也可能被意外访问，尽可能用安全类型
     protected final Map<BlockPos, ReplaceableTickingBlockEntity> tickingSyncBlockEntitiesByPos; // 从区域线程上访问，安全
     protected final Map<BlockPos, ReplaceableTickingBlockEntity> tickingAsyncBlockEntitiesByPos; // 从区域线程上访问，安全
-    protected final Map<BlockPos, ConstantBlockEntityRenderer> constantBlockEntityRenderers; // 会从区域线程上读写，netty线程上读取
-    protected final Map<BlockPos, BlockEntityRenderer> dynamicBlockEntityRenderers; // 会从区域线程上读写，netty线程上读取
+    protected final Map<BlockPos, ConstantBlockEntityRenderer> constantBlockEntityRenderers; // 会从区域线程上读写，异步线程上读取
+    protected final Map<BlockPos, BlockEntityRenderer> dynamicBlockEntityRenderers; // 会从区域线程上读写，异步线程上读取
     protected final ReentrantReadWriteLock renderLock = new ReentrantReadWriteLock();
     protected volatile boolean unsaved;
     protected volatile boolean loaded;
@@ -441,8 +441,10 @@ public class CEChunk {
 
     public void addBlockEntity(BlockEntity blockEntity) {
         this.setBlockEntity(blockEntity);
-        this.replaceOrCreateTickingBlockEntity(blockEntity);
-        this.createDynamicBlockEntityRenderer(blockEntity);
+        if (this.activated) {
+            this.replaceOrCreateTickingBlockEntity(blockEntity);
+            this.createDynamicBlockEntityRenderer(blockEntity);
+        }
     }
 
     public void removeBlockEntity(BlockPos blockPos) {
@@ -480,7 +482,7 @@ public class CEChunk {
         if (!this.activated) return;
         this.blockEntities.values().forEach(e -> e.setValid(false));
 
-        if (!CraftEngine.instance().platform().isStopping()) {
+        if (!CraftEngine.instance().isStopping()) {
             try {
                 this.renderLock.readLock().lock();
                 this.constantBlockEntityRenderers.values().forEach(ConstantBlockEntityRenderer::deactivate);
@@ -750,6 +752,10 @@ public class CEChunk {
         this.world.removeLoadedChunk(this);
         this.loaded = false;
         this.isEntitiesLoaded = false;
+    }
+
+    public boolean isActivated() {
+        return this.activated;
     }
 
     public List<BlockPos> constantBlockEntityRendererPositions() {

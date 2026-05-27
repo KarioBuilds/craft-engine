@@ -46,23 +46,27 @@ public class BukkitStorageAdaptor implements StorageAdaptor {
 
     @Override
     public @NotNull WorldDataStorage adapt(@NotNull World world) {
-        switch (Config.chunkStorageType()) {
+        return adapt(world, Config.chunkStorageType());
+    }
+
+    public @NotNull WorldDataStorage adapt(@NotNull World world, @NotNull StorageType storageType) {
+        switch (storageType) {
             case NONE -> {
                 return new NoneStorage();
             }
             case MCA -> {
                 Path path = world.directory().resolve(CEWorld.REGION_DIRECTORY);
                 if (Config.enableChunkCache()) {
-                    return new CachedStorage<>(new DefaultRegionFileStorage(path, VersionHelper.isFolia() ? FOLIA_FACTORY : BUKKIT_FACTORY));
+                    return new CachedStorage<>(new DefaultRegionFileStorage(path, VersionHelper.isFolia ? FOLIA_FACTORY : BUKKIT_FACTORY));
                 } else {
-                    return new DefaultRegionFileStorage(path, VersionHelper.isFolia() ? FOLIA_FACTORY : BUKKIT_FACTORY);
+                    return new DefaultRegionFileStorage(path, VersionHelper.isFolia ? FOLIA_FACTORY : BUKKIT_FACTORY);
                 }
             }
             case PDC -> {
                 if (Config.enableChunkCache()) {
-                    return new CachedStorage<>(new PersistentDataContainerStorage(VersionHelper.isFolia() ? FOLIA_FACTORY : BUKKIT_FACTORY));
+                    return new CachedStorage<>(new PersistentDataContainerStorage(world, VersionHelper.isFolia ? FOLIA_FACTORY : BUKKIT_FACTORY));
                 } else {
-                    return new PersistentDataContainerStorage(VersionHelper.isFolia() ? FOLIA_FACTORY : BUKKIT_FACTORY);
+                    return new PersistentDataContainerStorage(world, VersionHelper.isFolia ? FOLIA_FACTORY : BUKKIT_FACTORY);
                 }
             }
             default -> throw new UnsupportedOperationException("Unsupported chunk storage type: " + Config.chunkStorageType());

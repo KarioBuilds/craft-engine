@@ -1,12 +1,14 @@
 package net.momirealms.craftengine.bukkit.plugin.injector;
 
 import com.mojang.datafixers.util.Pair;
+import com.mojang.serialization.MapCodec;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy;
+import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.Argument;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
@@ -14,16 +16,17 @@ import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
-import net.momirealms.craftengine.bukkit.util.ItemTags;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.ItemDefinition;
 import net.momirealms.craftengine.core.item.ItemKeys;
+import net.momirealms.craftengine.core.item.ItemTags;
 import net.momirealms.craftengine.core.item.component.DataComponentKeys;
 import net.momirealms.craftengine.core.item.component.value.FireworkExplosion;
 import net.momirealms.craftengine.core.util.*;
 import net.momirealms.craftengine.proxy.minecraft.core.HolderLookupProxy;
 import net.momirealms.craftengine.proxy.minecraft.core.RegistryAccessProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.codec.StreamCodecProxy;
 import net.momirealms.craftengine.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.ContainerProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.inventory.CraftingContainerProxy;
@@ -36,6 +39,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -58,33 +62,50 @@ public final class RecipeInjector {
     public static void init() throws ReflectiveOperationException {
         ByteBuddy byteBuddy = new ByteBuddy(ClassFileVersion.JAVA_V17);
 
-        ElementMatcher.Junction<MethodDescription> matches = (VersionHelper.isOrAbove1_21() ?
+        ElementMatcher.Junction<MethodDescription> matches = (VersionHelper.isOrAbove1_21 ?
                 ElementMatchers.takesArguments(CraftingInputProxy.CLASS, LevelProxy.CLASS) :
                 ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, LevelProxy.CLASS)
         ).and(ElementMatchers.returns(boolean.class));
         ElementMatcher.Junction<MethodDescription> assemble = (
-                VersionHelper.isOrAbove26_1() ?
+                VersionHelper.isOrAbove26_1 ?
                 ElementMatchers.takesArguments(CraftingInputProxy.CLASS) :
-                VersionHelper.isOrAbove1_21() ?
+                VersionHelper.isOrAbove1_21 ?
                 ElementMatchers.takesArguments(CraftingInputProxy.CLASS, HolderLookupProxy.ProviderProxy.CLASS) :
-                VersionHelper.isOrAbove1_20_5() ?
+                VersionHelper.isOrAbove1_20_5 ?
                 ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, HolderLookupProxy.ProviderProxy.CLASS) :
                 ElementMatchers.takesArguments(CraftingContainerProxy.CLASS, RegistryAccessProxy.CLASS)
         ).and(ElementMatchers.returns(ItemStackProxy.CLASS));
 
-        Class<?> clazz$InjectedRepairItemRecipe = byteBuddy
-                .subclass(RepairItemRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
-                .name("net.momirealms.craftengine.bukkit.item.recipe.RepairItemRecipe")
-                // 只修改match逻辑，合并需要在事件里处理，否则无法应用变量
-                .method(matches)
-                .intercept(MethodDelegation.to(RepairMatchesInterceptor.INSTANCE))
-                .make()
-                .load(RecipeInjector.class.getClassLoader())
-                .getLoaded();
-        REPAIR_ITEM_RECIPE = createSpecialRecipe(REPAIR_ITEM, clazz$InjectedRepairItemRecipe);
+        if (VersionHelper.isOrAbove26_1) {
+            Class<?> clazz$InjectedRepairItemRecipe = byteBuddy
+                    .subclass(RepairItemRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
+                    .name("net.momirealms.craftengine.bukkit.item.recipe.RepairItemRecipe")
+                    .defineField("serializer", RecipeSerializerProxy.CLASS, Modifier.PUBLIC)
+                    .method(matches)
+                    .intercept(MethodDelegation.to(RepairMatchesInterceptor.INSTANCE))
+                    .method(ElementMatchers.named("getSerializer"))
+                    .intercept(FieldAccessor.ofField("serializer"))
+                    .make()
+                    .load(RecipeInjector.class.getClassLoader())
+                    .getLoaded();
+            REPAIR_ITEM_RECIPE = createSpecialRecipe(REPAIR_ITEM, clazz$InjectedRepairItemRecipe);
+            clazz$InjectedRepairItemRecipe.getField("serializer")
+                    .set(REPAIR_ITEM_RECIPE, RecipeSerializerProxy.INSTANCE.newInstance(MapCodec.unit(REPAIR_ITEM_RECIPE), StreamCodecProxy.INSTANCE.unit(REPAIR_ITEM_RECIPE)));
+        } else {
+            Class<?> clazz$InjectedRepairItemRecipe = byteBuddy
+                    .subclass(RepairItemRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
+                    .name("net.momirealms.craftengine.bukkit.item.recipe.RepairItemRecipe")
+                    // 只修改match逻辑，合并需要在事件里处理，否则无法应用变量
+                    .method(matches)
+                    .intercept(MethodDelegation.to(RepairMatchesInterceptor.INSTANCE))
+                    .make()
+                    .load(RecipeInjector.class.getClassLoader())
+                    .getLoaded();
+            REPAIR_ITEM_RECIPE = createSpecialRecipe(REPAIR_ITEM, clazz$InjectedRepairItemRecipe);
+        }
 
         // 26.1 以上的染色配方直接注册，无需特殊配方
-        if (!VersionHelper.isOrAbove26_1()) {
+        if (!VersionHelper.isOrAbove26_1) {
             Class<?> clazz$InjectedArmorDyeRecipe = byteBuddy
                     .subclass(ArmorDyeRecipeProxy.CLASS, ConstructorStrategy.Default.IMITATE_SUPER_CLASS_OPENING)
                     .name("net.momirealms.craftengine.bukkit.item.recipe.DyeRecipe")
@@ -110,7 +131,7 @@ public final class RecipeInjector {
             FIREWORK_STAR_FADE_RECIPE = createSpecialRecipe(FIREWORK_STAR_FADE, clazz$InjectedFireworkStarFadeRecipe);
         }
 
-        if (VersionHelper.isOrAbove26_1()) {
+        if (VersionHelper.isOrAbove26_1) {
             Class<?> clazz$InjectedFireworkStarFadeRecipe = byteBuddy
                     .subclass(FireworkStarFadeRecipeProxy.CLASS)
                     .name("net.momirealms.craftengine.bukkit.item.recipe.FireworkStarFadeRecipe")
@@ -128,11 +149,11 @@ public final class RecipeInjector {
 
     @NotNull
     private static Object createSpecialRecipe(Key id, Class<?> clazz) throws InstantiationException, IllegalAccessException, java.lang.reflect.InvocationTargetException {
-        if (VersionHelper.isOrAbove26_1()) {
+        if (VersionHelper.isOrAbove26_1) {
             Constructor<?> constructor = ReflectionUtils.getConstructor(clazz);
             assert constructor != null;
             return constructor.newInstance();
-        } else if (VersionHelper.isOrAbove1_20_2()) {
+        } else if (VersionHelper.isOrAbove1_20_2) {
             Constructor<?> constructor = ReflectionUtils.getConstructor(clazz, CraftingBookCategoryProxy.CLASS);
             assert constructor != null;
             return constructor.newInstance(CraftingBookCategoryProxy.MISC);
@@ -144,16 +165,16 @@ public final class RecipeInjector {
     }
 
     private static final Function<Object, Integer> INGREDIENT_SIZE_GETTER =
-            VersionHelper.isOrAbove1_21() ?
+            VersionHelper.isOrAbove1_21 ?
                     CraftingInputProxy.INSTANCE::size :
                     ContainerProxy.INSTANCE::getContainerSize;
     private static final BiFunction<Object, Integer, Object> INGREDIENT_GETTER =
-            VersionHelper.isOrAbove1_21() ?
+            VersionHelper.isOrAbove1_21 ?
                     CraftingInputProxy.INSTANCE::getItem :
                     ContainerProxy.INSTANCE::getItem;
 
     private static final Function<Object, Boolean> REPAIR_INGREDIENT_COUNT_CHECKER =
-            VersionHelper.isOrAbove1_21() ?
+            VersionHelper.isOrAbove1_21 ?
                     (input) -> CraftingInputProxy.INSTANCE.ingredientCount(input) != 2 :
                     (container) -> false;
 
@@ -273,7 +294,7 @@ public final class RecipeInjector {
     }
 
     private static boolean isDamageableItem(Item item) {
-        if (VersionHelper.isOrAbove1_20_5()) {
+        if (VersionHelper.isOrAbove1_20_5) {
             return item.hasComponent(DataComponentTypes.MAX_DAMAGE) && item.hasComponent(DataComponentTypes.DAMAGE);
         } else {
             return ItemProxy.INSTANCE.canBeDepleted(ItemStackProxy.INSTANCE.getItem(item.minecraftItem()));
@@ -281,7 +302,7 @@ public final class RecipeInjector {
     }
 
     private static final Function<Object, Boolean> DYE_INGREDIENT_COUNT_CHECKER =
-            VersionHelper.isOrAbove1_21() ?
+            VersionHelper.isOrAbove1_21 ?
                     (input) -> CraftingInputProxy.INSTANCE.ingredientCount(input) < 2 :
                     (container) -> false;
 
@@ -371,8 +392,8 @@ public final class RecipeInjector {
     }
 
     private static final Predicate<Item> IS_DYEABLE =
-            VersionHelper.isOrAbove1_20_5() ?
-                    (item -> item.hasItemTag(ItemTags.DYEABLE)) :
+            VersionHelper.isOrAbove1_20_5 ?
+                    (item -> item.hasVanillaTag(ItemTags.DYEABLE)) :
                     (item -> {
                        Object itemLike = ItemStackProxy.INSTANCE.getItem(item.minecraftItem());
                        return DyeableLeatherItemProxy.CLASS.isInstance(itemLike);
@@ -400,7 +421,7 @@ public final class RecipeInjector {
         if (!DyeItemProxy.CLASS.isInstance(dyeItem)) return null;
         Object dyeColor = DyeItemProxy.INSTANCE.getDyeColor(dyeItem);
         int textureDiffuseColor;
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
             textureDiffuseColor = DyeColorProxy.INSTANCE.getTextureDiffuseColor(dyeColor);
         } else {
             float[] rgb = DyeColorProxy.INSTANCE.getTextureDiffuseColors(dyeColor);
@@ -414,7 +435,7 @@ public final class RecipeInjector {
 
     @Nullable
     private static Color getVanillaFireworkColor(final Item item) {
-        if (VersionHelper.isOrAbove26_1()) {
+        if (VersionHelper.isOrAbove26_1) {
             String colorType = (String) item.getComponentAsJava(DataComponentKeys.DYE);
             if (colorType == null) {
                 return null;

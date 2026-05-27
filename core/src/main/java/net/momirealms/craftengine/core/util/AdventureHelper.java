@@ -7,7 +7,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.event.HoverEvent;
-import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
@@ -49,28 +48,15 @@ public final class AdventureHelper {
     }
 
     private AdventureHelper() {
-        this.miniMessage = MiniMessage.builder()
-                .tags(
-                        TagResolver.resolver(
-                                TagResolver.standard(),
-                                // TODO 等 adventure 修复后移除这些
-                                TagResolver.resolver("!i", net.kyori.adventure.text.minimessage.tag.Tag.styling(TextDecoration.ITALIC.withState(false))),
-                                TagResolver.resolver("!em", net.kyori.adventure.text.minimessage.tag.Tag.styling(TextDecoration.ITALIC.withState(false))),
-                                TagResolver.resolver("!u", net.kyori.adventure.text.minimessage.tag.Tag.styling(TextDecoration.UNDERLINED.withState(false))),
-                                TagResolver.resolver("!st", net.kyori.adventure.text.minimessage.tag.Tag.styling(TextDecoration.STRIKETHROUGH.withState(false))),
-                                TagResolver.resolver("!obf", net.kyori.adventure.text.minimessage.tag.Tag.styling(TextDecoration.OBFUSCATED.withState(false))),
-                                TagResolver.resolver("!b", net.kyori.adventure.text.minimessage.tag.Tag.styling(TextDecoration.BOLD.withState(false)))
-                        )
-                )
-                .build();
+        this.miniMessage = MiniMessage.builder().build();
         this.miniMessageStrict = MiniMessage.builder().strict(true).build();
         this.miniMessageCustom = MiniMessage.builder().tags(TagResolver.empty()).build();
         GsonComponentSerializer.Builder gsonBuilder = GsonComponentSerializer.builder();
-        if (!VersionHelper.isOrAbove1_20_5()) {
+        if (!VersionHelper.isOrAbove1_20_5) {
             gsonBuilder.legacyHoverEventSerializer(NBTLegacyHoverEventSerializer.get());
             gsonBuilder.editOptions((b) -> b.value(JSONOptions.EMIT_HOVER_SHOW_ENTITY_ID_AS_INT_ARRAY, false));
         }
-        if (!VersionHelper.isOrAbove1_21_5()) {
+        if (!VersionHelper.isOrAbove1_21_5) {
             gsonBuilder.editOptions((b) -> {
                 b.value(JSONOptions.EMIT_CLICK_EVENT_TYPE, JSONOptions.ClickEventValueMode.CAMEL_CASE);
                 b.value(JSONOptions.EMIT_HOVER_EVENT_TYPE, JSONOptions.HoverEventValueMode.CAMEL_CASE);
@@ -81,13 +67,13 @@ public final class AdventureHelper {
         this.gsonComponentSerializer = gsonBuilder.build();
         this.nbtComponentSerializer = NBTComponentSerializer.builder()
                 .editOptions((b) -> {
-                    if (!VersionHelper.isOrAbove1_21_5()) {
+                    if (!VersionHelper.isOrAbove1_21_5) {
                         b.value(NBTSerializerOptions.MODERN_EVENT_TYPE, false);
                     }
-                    if (!VersionHelper.isOrAbove1_20_5()) {
+                    if (!VersionHelper.isOrAbove1_20_5) {
                         b.value(NBTSerializerOptions.DATA_COMPONENT_RELEASE, false);
                     }
-                    if (!VersionHelper.isOrAbove1_20_3()) {
+                    if (!VersionHelper.isOrAbove1_20_3) {
                         b.value(NBTSerializerOptions.INT_ARRAY_UUID, false);
                     }
                     b.value(NBTSerializerOptions.SERIALIZE_COMPONENT_TYPE, false);

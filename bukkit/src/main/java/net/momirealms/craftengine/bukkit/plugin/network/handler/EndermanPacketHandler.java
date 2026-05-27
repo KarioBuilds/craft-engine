@@ -2,10 +2,11 @@ package net.momirealms.craftengine.bukkit.plugin.network.handler;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
-import net.momirealms.craftengine.bukkit.entity.data.EnderManData;
+import net.momirealms.craftengine.bukkit.entity.data.monster.EnderManData;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.ComponentUtils;
+import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
@@ -34,16 +35,16 @@ public final class EndermanPacketHandler implements EntityPacketHandler {
         for (int i = packedItems.size() - 1; i >= 0; i--) {
             Object packedItem = packedItems.get(i);
             int entityDataId = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getId(packedItem);
-            if (entityDataId == EnderManData.CarryState.id()) {
-                Optional<Object> blockState = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+            if (entityDataId == EnderManData.CarriedBlock.id()) {
+                Optional<Object> blockState = EntityUtils.getEntityDataValue(packedItem, EnderManData.CarriedBlock);
                 if (blockState.isEmpty()) continue;
                 int stateId = BlockStateUtils.blockStateToId(blockState.get());
-                int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientModEnabled());
+                int newStateId = BukkitNetworkManager.instance().remapBlockState(stateId, user.clientCustomBlockEnabled());
                 if (newStateId == stateId) continue;
                 SynchedEntityDataProxy.DataValueProxy.INSTANCE.setValue(packedItem, Optional.of(BlockStateUtils.idToBlockState(newStateId)));
                 isChanged = true;
             } else if (Config.interceptEntityName() && entityDataId == BaseEntityData.CustomName.id()) {
-                Optional<Object> optionalTextComponent = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+                Optional<Object> optionalTextComponent = EntityUtils.getEntityDataValue(packedItem, BaseEntityData.CustomName);
                 if (optionalTextComponent.isEmpty()) continue;
                 Object textComponent = optionalTextComponent.get();
                 String json = ComponentUtils.minecraftToJson(textComponent);

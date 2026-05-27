@@ -1,7 +1,8 @@
 package net.momirealms.craftengine.bukkit.plugin.network.handler;
 
-import net.momirealms.craftengine.bukkit.entity.data.ItemDisplayEntityData;
+import net.momirealms.craftengine.bukkit.entity.data.DisplayData;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
+import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.PacketUtils;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -29,8 +30,8 @@ public final class ItemDisplayPacketHandler implements EntityPacketHandler {
         for (int i = packedItems.size() - 1; i >= 0; i--) {
             Object packedItem = packedItems.get(i);
             int entityDataId = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getId(packedItem);
-            if (entityDataId != ItemDisplayEntityData.DisplayedItem.id()) continue;
-            Object nmsItemStack = SynchedEntityDataProxy.DataValueProxy.INSTANCE.getValue(packedItem);
+            if (entityDataId != DisplayData.ItemDisplayData.ItemStack.id()) continue;
+            Object nmsItemStack = EntityUtils.getEntityDataValue(packedItem, DisplayData.ItemDisplayData.ItemStack);
             ItemStack itemStack = ItemStackUtils.getBukkitStack(nmsItemStack);
             Optional<ItemStack> optional = BukkitItemManager.instance().s2c(itemStack, user);
             if (optional.isEmpty()) break;

@@ -104,7 +104,7 @@ public final class RecipeEventListener implements Listener {
                     // The item is an ingredient, we should never consider it as fuel firstly
                     if (ceRecipe != null) return;
 
-                    int fuelTime = this.itemManager.getFuelTime(BukkitAdaptor.adapt(item).id());
+                    int fuelTime = getFuelTime(BukkitAdaptor.adapt(item).id());
                     if (fuelTime == 0) {
                         if (ItemStackUtils.isCustomItem(item) && item.getType().isFuel()) {
                             event.setCancelled(true);
@@ -171,7 +171,7 @@ public final class RecipeEventListener implements Listener {
                         item = player.getInventory().getItem(hotBarSlot);
                     }
                     if (ItemStackUtils.isEmpty(item)) return;
-                    int fuelTime = this.plugin.itemManager().getFuelTime(BukkitAdaptor.adapt(item).id());
+                    int fuelTime = getFuelTime(BukkitAdaptor.adapt(item).id());
                     // only handle custom items
                     if (fuelTime == 0) {
                         if (ItemStackUtils.isCustomItem(item) && item.getType().isFuel()) {
@@ -198,7 +198,7 @@ public final class RecipeEventListener implements Listener {
                     ItemStack itemOnCursor = event.getCursor();
                     // pick item
                     if (ItemStackUtils.isEmpty(itemOnCursor)) return;
-                    int fuelTime = this.plugin.itemManager().getFuelTime(BukkitAdaptor.adapt(itemOnCursor).id());
+                    int fuelTime = getFuelTime(BukkitAdaptor.adapt(itemOnCursor).id());
                     // only handle custom items
                     if (fuelTime == 0) {
                         if (ItemStackUtils.isCustomItem(itemOnCursor) && itemOnCursor.getType().isFuel()) {
@@ -263,6 +263,10 @@ public final class RecipeEventListener implements Listener {
                 }
             }
         }
+    }
+
+    private int getFuelTime(Key id) {
+        return this.itemManager.getItemDefinition(id).map(it -> it.settings().fuelTime()).orElse(0);
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
@@ -546,7 +550,7 @@ public final class RecipeEventListener implements Listener {
                         repairItem = item;
                         break;
                     }
-                    if (wrappedFirst.hasItemTag(tag)) {
+                    if (wrappedFirst.hasVanillaTag(tag)) {
                         repairItem = item;
                         break;
                     }
@@ -578,7 +582,7 @@ public final class RecipeEventListener implements Listener {
         String renameText;
         int maxRepairCost;
         //int previousCost;
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
             AnvilView anvilView = event.getView();
             renameText = anvilView.getRenameText();
             maxRepairCost = anvilView.getMaximumRepairCost();
@@ -599,10 +603,10 @@ public final class RecipeEventListener implements Listener {
             } else if (repairCost == 0) {
                 hasResult = false;
             }
-        } else if (VersionHelper.isOrAbove1_20_5() && wrappedFirst.hasComponent(DataComponentTypes.CUSTOM_NAME)) {
+        } else if (VersionHelper.isOrAbove1_20_5 && wrappedFirst.hasComponent(DataComponentTypes.CUSTOM_NAME)) {
             repairCost += 1;
             wrappedFirst.customNameJson(null);
-        } else if (!VersionHelper.isOrAbove1_20_5() && wrappedFirst.hasTag("display", "Name")) {
+        } else if (!VersionHelper.isOrAbove1_20_5 && wrappedFirst.hasTag("display", "Name")) {
             repairCost += 1;
             wrappedFirst.customNameJson(null);
         }
@@ -611,14 +615,14 @@ public final class RecipeEventListener implements Listener {
 
         // To fix some client side visual issues
         Object anvilMenu;
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
             anvilMenu = CraftInventoryViewProxy.INSTANCE.getContainer(event.getView());
         } else {
             anvilMenu = CraftInventoryAnvilProxy.INSTANCE.getContainer(inventory);
         }
         AbstractContainerMenuProxy.INSTANCE.broadcastFullState(anvilMenu);
 
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
             AnvilView anvilView = event.getView();
             anvilView.setRepairCost(finalCost);
             anvilView.setRepairItemCountCost(actualConsumedAmount);
@@ -662,7 +666,7 @@ public final class RecipeEventListener implements Listener {
         wrappedFirst.getDefinition().ifPresent(item -> {
             if (!item.settings().renameable()) {
                 String renameText;
-                if (VersionHelper.isOrAbove1_21()) {
+                if (VersionHelper.isOrAbove1_21) {
                     AnvilView anvilView = event.getView();
                     renameText = anvilView.getRenameText();
                 } else {
@@ -703,7 +707,7 @@ public final class RecipeEventListener implements Listener {
                 return;
             }
 
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 // 在26.1以后dye不再应为special recipe
                 if (DyeRecipeProxy.CLASS.isInstance(mcRecipe)) {
                     return;
@@ -829,7 +833,7 @@ public final class RecipeEventListener implements Listener {
         if (serverPlayer == null) return;
 
         // 对低版本nothing不全的兼容
-        if (!VersionHelper.isOrAbove1_20_5() && LegacyInventoryUtils.isHotBarSwapAndReadd(action)) {
+        if (!VersionHelper.isOrAbove1_20_5 && LegacyInventoryUtils.isHotBarSwapAndReadd(action)) {
             int slot = event.getHotbarButton();
             if (slot == -1) {
                 if (!serverPlayer.getItemInHand(InteractionHand.OFF_HAND).isEmpty()) {
@@ -954,15 +958,15 @@ public final class RecipeEventListener implements Listener {
     private Key getCurrentCraftingRecipeId(CraftingInventory inventory) {
         Object craftContainer = CraftInventoryProxy.INSTANCE.getInventory(inventory);
         Object recipeHolderOrRecipe;
-        if (VersionHelper.isOrAbove1_21()) {
+        if (VersionHelper.isOrAbove1_21) {
             recipeHolderOrRecipe = CraftingContainerProxy.INSTANCE.getCurrentRecipe(craftContainer);
         } else {
             recipeHolderOrRecipe = ContainerProxy.INSTANCE.getCurrentRecipe(craftContainer);
         }
         if (recipeHolderOrRecipe == null) return null;
-        if (VersionHelper.isOrAbove1_21_2()) {
+        if (VersionHelper.isOrAbove1_21_2) {
             return KeyUtils.identifierToKey(ResourceKeyProxy.INSTANCE.getIdentifier(RecipeHolderProxy.INSTANCE.getId(recipeHolderOrRecipe)));
-        } else if (VersionHelper.isOrAbove1_20_2()) {
+        } else if (VersionHelper.isOrAbove1_20_2) {
             return KeyUtils.identifierToKey(RecipeHolderProxy.INSTANCE.getId(recipeHolderOrRecipe));
         } else {
             // 其实是recipe getId的实现
@@ -1083,7 +1087,7 @@ public final class RecipeEventListener implements Listener {
             }
 
             // 对低版本nothing不全的兼容
-            if (!VersionHelper.isOrAbove1_20_5() && LegacyInventoryUtils.isHotBarSwapAndReadd(action)) {
+            if (!VersionHelper.isOrAbove1_20_5 && LegacyInventoryUtils.isHotBarSwapAndReadd(action)) {
                 int slot = event.getHotbarButton();
                 if (slot == -1) {
                     if (!serverPlayer.getItemInHand(InteractionHand.OFF_HAND).isEmpty()) {
@@ -1245,7 +1249,7 @@ public final class RecipeEventListener implements Listener {
             }
 
             // 对低版本nothing不全的兼容
-            if (!VersionHelper.isOrAbove1_20_5() && LegacyInventoryUtils.isHotBarSwapAndReadd(action)) {
+            if (!VersionHelper.isOrAbove1_20_5 && LegacyInventoryUtils.isHotBarSwapAndReadd(action)) {
                 int slot = event.getHotbarButton();
                 if (slot == -1) {
                     if (!serverPlayer.getItemInHand(InteractionHand.OFF_HAND).isEmpty()) {

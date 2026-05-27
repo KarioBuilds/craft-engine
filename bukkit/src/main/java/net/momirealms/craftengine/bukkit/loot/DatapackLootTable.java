@@ -35,9 +35,9 @@ public class DatapackLootTable implements Loot {
         this.minecraftLootTable = LazyReference.lazyReference(() -> {
             Object minecraftServer = MinecraftServerProxy.INSTANCE.getServer();
             // 1.20.5 +
-            if (VersionHelper.isOrAbove1_20_5()) {
+            if (VersionHelper.isOrAbove1_20_5) {
                 Object registryKey = ResourceKeyProxy.INSTANCE.create(
-                        RegistriesProxy.INSTANCE.getLootTable(),
+                        RegistriesProxy.LOOT_TABLE,
                         IdentifierProxy.INSTANCE.newInstance(identifier.namespace(), identifier.value())
                 );
                 // 非空, 至少会返回一个 LootTable.EMPTY.
@@ -103,7 +103,7 @@ public class DatapackLootTable implements Loot {
             ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.TOOL);
             ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.EXPLOSION_RADIUS);
 
-            if (VersionHelper.isOrAbove1_21()) {
+            if (VersionHelper.isOrAbove1_21) {
                 ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.ATTACKING_ENTITY);
                 ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.DIRECT_ATTACKING_ENTITY);
                 ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.ENCHANTMENT_LEVEL);
@@ -116,7 +116,7 @@ public class DatapackLootTable implements Loot {
                 ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.LOOTING_MOD);
             }
 
-            if (VersionHelper.isOrAbove1_21_9()) {
+            if (VersionHelper.isOrAbove1_21_9) {
                 ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.INTERACTING_ENTITY);
                 ContextKeySetProxy.BuilderProxy.INSTANCE.optional(builder, LootContextParamsProxy.TARGET_ENTITY);
             }

@@ -101,6 +101,7 @@ resource-pack:
       method-5: true # This will reduce the resource pack size, also it prevents some software from extracting it
       method-6: false # This will increase the resource pack size by a certain percentage
       method-7: false
+      method-8: false # This will increase the resource pack size by a certain percentage
     # Create incorrect crc data
     incorrect-crc: false
     # Spoof huge files
@@ -111,15 +112,16 @@ resource-pack:
     fake-directory: false
     # Break the texture file to prevent thieves from opening it
     break-texture: false
-    # Prevent straightforward unzip
-    anti-unzip: false
     # Obfuscate your resource pack to prevent thieves from restoring its original structure
     obfuscation:
       enable: false
       seed: 0 # 0 = random seed
+      # Whether to obfuscate the item model component
+      # This only takes effect when you enable the client-bound-model.
+      obfuscate-item-model: false
       # Determines the length of obfuscated overlay directories
       overlay:
-        length: 4  # 0 = disable
+        length: 3~6 # 0 = disable
       # Determines the number and length of obfuscated namespaces
       namespace:
         amount: 32  # 0 = disable
@@ -128,12 +130,7 @@ resource-pack:
       path:
         depth: 2~6
         length: 1~4
-      # This only works if you enable client bound model
-      # Determines the depth and length of the obfuscated item model
-      item-model:
-        enable: false
-        depth: 2~6
-        length: 1~4
+        anti-unzip: false
       # Assemble multiple textures into one giant texture atlas to make it more difficult for thieves to directly extract the individual textures.
       # A larger atlas will result in slower generation speed, but it will also lead to a smaller resource pack size.
       atlas:
@@ -149,6 +146,8 @@ resource-pack:
         - "@vanilla_models"         # bypass vanilla models
       bypass-sounds:
         - "@vanilla_sounds"         # bypass vanilla sounds
+      bypass-item-models:
+        - "@vanilla_item_model"
       bypass-equipments: []
 
   # This section controls how to send the resource pack to players
@@ -171,21 +170,20 @@ resource-pack:
     # The file to upload
     file-to-upload: "./generated/resource_pack.zip"
 
-    # If you are hosting the resource pack by yourself, replace `localhost` with your server ip otherwise it would only work on your local pc
-    # If using BungeeCord or Velocity, consider using a proxy-side plugin to handle resource pack delivery.
+    # If you're using BungeeCord or Velocity, consider using a proxy-side plugin to handle resource pack delivery.
     # Read this page for more host types and argument explanations: https://xiao-momi.github.io/craft-engine-wiki/getting_start/set_up_host
     hosting:
       - type: "self"
-        ip: "localhost"
-        port: 8163
+        ip: "auto"
+        port: "auto"
         protocol: "http"
-        deny-non-minecraft-request: true
-        one-time-token: true
-        strict-validation: false
-        rate-limiting:
-          max-bandwidth-per-second: 5_000_000
-          min-download-speed-per-player: 50_000
-          qps-per-ip: 5/60
+        deny_non_minecraft_request: true
+        one_time_token: true
+        strict_validation: false
+        rate_limiting:
+          max_bandwidth_per_second: 5_000_000
+          min_download_speed_per_player: 50_000
+          qps_per_ip: 5/60
 
     # HTTP proxy settings for routing resource pack download requests. For most users, this option is unnecessary.
     proxy:
@@ -307,6 +305,8 @@ item:
   default-drop-display:
     enable: false
     format: "<arg:count>x <name>"
+
+  # When updating the server version, update existing items.
   data-fixer-upper:
     enable: true
     fallback-version: server # https://minecraft.wiki/w/Data_version#Java_Edition
@@ -445,12 +445,11 @@ image:
     -14: '\uf80d'
     -15: '\uf80e'
     -16: '\uf80f'
-    -24: '\uf810'
-    -32: '\uf811'
-    -48: '\uf812'
-    -64: '\uf813'
-    -128: '\uf814'
-    -256: '\uf815'
+    -32: '\uf810'
+    -48: '\uf811'
+    -64: '\uf812'
+    -128: '\uf813'
+    -256: '\uf814'
     1: '\uf830'
     2: '\uf831'
     3: '\uf832'
@@ -467,12 +466,11 @@ image:
     14: '\uf83d'
     15: '\uf83e'
     16: '\uf83f'
-    24: '\uf840'
-    32: '\uf841'
-    48: '\uf842'
-    64: '\uf843'
-    128: '\uf844'
-    256: '\uf845'
+    32: '\uf840'
+    48: '\uf841'
+    64: '\uf842'
+    128: '\uf843'
+    256: '\uf844'
 
 network:
   # Disables the chat reporting.
@@ -504,15 +502,22 @@ network:
     item: true
     advancement: true   # Toast
     player-chat: true
+    dialog: true
 
   # Settings related to communication with CraftEngineMod
   mod-channel:
-    enable: true
     requires-permission: false
+    logging-permission-denied: true
+    creative-tab-max-items-per-packet: 10
 
   # Encrypt the raw component information before sending it to the client. This option requires a restart to apply.
   item-crypto:
     enable: true
+    # Encryption algorithm for item data
+    # ID        |  Encryption Speed | Consistency |
+    # xor       |      Instant         Absolute   |
+    # aes-gcm   |       Fast            Random    |
+    # chacha20  |       Fast            Random    |
     algorithm: xor # xor/aes-gcm/chacha20
     key: ""  # empty = random key
 
@@ -601,10 +606,18 @@ gui:
 
 chunk-system:
   # Storage format for chunk data persistence
-  # mca: Minecraft Anvil format
-  # pdc: Persistent Data Container provided by Bukkit
-  # none: No persistent storage (in-memory only)
-  storage-type: pdc
+  #
+  # mca: Minecraft Anvil format (Independent storage ensures that the custom block will not be corrupted when loaded in other scenarios)
+  # pdc: Persistent Data Container provided by Bukkit (Faster, but can only run on Bukkit and its downstream platforms)
+  # none: No persistent storage (In-memory only)
+  #
+  # The SlimeWorld will automatically use the Slime format for storage without requiring any configuration.
+  #
+  # To migrate world storage, first change the storage type in the configuration.
+  # Then run the command: /ce feature migrate-world-storage [world] [previous_type]
+  # Once the migration is complete, restart the server.
+  #
+  storage-type: mca
   # Caches serialized chunk data to reduce I/O overhead for frequently loaded/unloaded chunks
   cache-system: true
   # Compression algorithm for chunk data
@@ -639,6 +652,15 @@ chunk-system:
     enable: false
     remove: []
     convert: {}
+  # It is decided at which stage of chunk generation the custom chunk data will be saved.
+  # Since Minecraft's chunk generation can be terminated at any stage, you can disable
+  # these options if you do not need the datapack to generate the terrain.
+  generation:
+    noise: true
+    surface: true
+    structure: true
+    carver: true
+    feature: true
 
 # [Premium Exclusive]
 client-optimization:
@@ -686,5 +708,7 @@ debug:
   resource-pack: false
   block: false
   entity-culling: false
+  chunk: false
   packet: false
   ignored-packets: []
+  print-stack-trace: false

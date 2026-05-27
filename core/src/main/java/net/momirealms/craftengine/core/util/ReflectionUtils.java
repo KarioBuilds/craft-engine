@@ -1,6 +1,7 @@
 package net.momirealms.craftengine.core.util;
 
 import cn.gtemc.reflection.ImplLookupGetter;
+import net.momirealms.sparrow.reflection.SReflection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,9 +15,22 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class ReflectionUtils {
-    public static final MethodHandles.Lookup LOOKUP = ImplLookupGetter.IMPL_LOOKUP;
+    public static final boolean JNI_IS_AVAILABLE = MiscUtils.get(() -> {
+        try {
+            Class.forName("cn.gtemc.reflection.ImplLookupGetter");
+            return true;
+        } catch (Throwable t) {
+            if (VersionHelper.IS_RUNNING_IN_DEV) {
+                System.err.println("[CraftEngine] JNI is not available");
+                t.printStackTrace(System.err);
+            }
+            return false;
+        }
+    });
+    public static final MethodHandles.Lookup LOOKUP = JNI_IS_AVAILABLE ? ImplLookupGetter.IMPL_LOOKUP : SReflection.getLookup();
 
-    private ReflectionUtils() {}
+    private ReflectionUtils() {
+    }
 
     public static Class<?> getClazz(String... classes) {
         for (String className : classes) {
@@ -65,6 +79,26 @@ public final class ReflectionUtils {
         return null;
     }
 
+    @Nullable
+    public static Field getDeclaredField(final Object owner, final Class<?> type, int index) {
+        if (owner == null) {
+            return null;
+        }
+        int i = 0;
+        Class<?> clazz = owner.getClass();
+        while (clazz != null && clazz != Object.class) {
+            for (final Field field : clazz.getDeclaredFields()) {
+                if (field.getType() == type) {
+                    if (index == i) {
+                        return setAccessible(field);
+                    }
+                    i++;
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return null;
+    }
 
     @Nullable
     public static Field getDeclaredField(final Class<?> clazz, final Class<?> type, int index) {

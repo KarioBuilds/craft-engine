@@ -15,7 +15,7 @@ import java.util.Optional;
 
 public interface NetworkItemHandler {
     Operation[] BY_INDEX = new Operation[] {Operation.ADD, Operation.REMOVE, Operation.RESET};
-    String NETWORK_ITEM_TAG = "craftengine:network_modifiers";
+    String NETWORK_ITEM_TAG = "craftengine:network_data";
     String NETWORK_OPERATION = "type";
     String NETWORK_VALUE = "value";
 
@@ -53,7 +53,7 @@ public interface NetworkItemHandler {
         Operation(int id, TriConsumer<Item, String, Tag> componentConsumer, TriConsumer<Item, String, Tag> nbtConsumer) {
             this.id = id;
             this.tag = new ByteTag((byte) id);
-            this.consumer = VersionHelper.isOrAbove1_20_5() ? componentConsumer : nbtConsumer;
+            this.consumer = VersionHelper.isOrAbove1_20_5 ? componentConsumer : nbtConsumer;
         }
 
         public int id() {

@@ -6,8 +6,10 @@ import com.github.benmanes.caffeine.cache.Scheduler;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.ChunkPos;
+import net.momirealms.craftengine.core.world.WorldSettings;
 import net.momirealms.craftengine.core.world.chunk.CEChunk;
 import net.momirealms.craftengine.core.world.chunk.Chunk;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,9 +25,19 @@ public final class CachedStorage<T extends WorldDataStorage> implements WorldDat
         this.chunkCache = Caffeine.newBuilder()
                 .executor(CraftEngine.instance().scheduler().async())
                 .scheduler(Scheduler.systemScheduler())
-                .initialCapacity(2048)
+                .initialCapacity(4096)
                 .expireAfterAccess(60, TimeUnit.SECONDS)
                 .build();
+    }
+
+    @Override
+    public WorldSettings readSettings() throws IOException {
+        return this.storage.readSettings();
+    }
+
+    @Override
+    public void writeSettings(WorldSettings settings) throws IOException {
+        this.storage.writeSettings(settings);
     }
 
     @Override
@@ -47,6 +59,16 @@ public final class CachedStorage<T extends WorldDataStorage> implements WorldDat
     @Override
     public void writeChunkAt(@NotNull ChunkPos pos, @NotNull CEChunk chunk) throws IOException {
         this.storage.writeChunkAt(pos, chunk);
+    }
+
+    @Override
+    public @Nullable CompoundTag readChunkTagAt(@NotNull ChunkPos pos) throws IOException {
+        return this.storage.readChunkTagAt(pos);
+    }
+
+    @Override
+    public void writeChunkTagAt(@NotNull ChunkPos pos, @Nullable CompoundTag nbt) throws IOException {
+        this.storage.writeChunkTagAt(pos, nbt);
     }
 
     @Override
