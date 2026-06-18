@@ -157,6 +157,11 @@ public final class ItemEventListener implements Listener {
             return;
         }
 
+        // 这是模拟执行的逻辑，且只会同手执行，所以出现这个情况需要直接返回，避免递归调用和二次触发函数
+        if (serverPlayer.isSimulatingInteraction()) {
+            return;
+        }
+
         // some common data
         Block block = Objects.requireNonNull(event.getClickedBlock());
         BlockData blockData = block.getBlockData();
@@ -401,30 +406,38 @@ public final class ItemEventListener implements Listener {
                     event.setUseItemInHand(Event.Result.DENY);
                     Object nmsHitResult = InteractUtils.toNMSHitResult(hitResult);
                     Object item = ItemStackProxy.INSTANCE.getItem(itemInHand.minecraftItem());
-                    Object result = ItemProxy.INSTANCE.useOn(item, UseOnContextProxy.INSTANCE.newInstance(
-                            world.minecraftWorld(),
-                            serverPlayer.serverPlayer(),
-                            hand == InteractionHand.MAIN_HAND ? InteractionHandProxy.MAIN_HAND : InteractionHandProxy.OFF_HAND,
-                            itemInHand.minecraftItem(),
-                            nmsHitResult
-                    ));
-                    if (result != InteractionResultProxy.INSTANCE.getPass()) {
-                        return;
-                    }
-                    result = ItemProxy.INSTANCE.use(
-                            item,
-                            serverPlayer.world().minecraftWorld(),
-                            serverPlayer.serverPlayer(),
-                            hand == InteractionHand.MAIN_HAND ? InteractionHandProxy.MAIN_HAND : InteractionHandProxy.OFF_HAND
-                    );
-                    if (result == InteractionResultProxy.INSTANCE.getFail() || result == InteractionResultProxy.INSTANCE.getPass()) {
-                        if (hand == InteractionHand.MAIN_HAND) { // 仅筛选主手逻辑
-                            serverPlayer.simulatePacket(ServerboundUseItemOnPacketProxy.INSTANCE.newInstance(
-                                    InteractionHandProxy.OFF_HAND,
-                                    nmsHitResult,
-                                    0
-                            ));
+                    Object result;
+                    try {
+                        serverPlayer.setIsSimulatingInteraction(true);
+                        // 先尝试 useOn
+                        result = ItemProxy.INSTANCE.useOn(item, UseOnContextProxy.INSTANCE.newInstance(
+                                world.minecraftWorld(),
+                                serverPlayer.serverPlayer(),
+                                hand == InteractionHand.MAIN_HAND ? InteractionHandProxy.MAIN_HAND : InteractionHandProxy.OFF_HAND,
+                                itemInHand.minecraftItem(),
+                                nmsHitResult
+                        ));
+                        if (result != InteractionResultProxy.INSTANCE.getPass()) {
+                            return;
                         }
+                        // 再尝试 use
+                        result = ItemProxy.INSTANCE.use(
+                                item,
+                                serverPlayer.world().minecraftWorld(),
+                                serverPlayer.serverPlayer(),
+                                hand == InteractionHand.MAIN_HAND ? InteractionHandProxy.MAIN_HAND : InteractionHandProxy.OFF_HAND
+                        );
+                    } finally {
+                        serverPlayer.setIsSimulatingInteraction(false);
+                    }
+
+                    // 最后尝试副手
+                    if (hand == InteractionHand.MAIN_HAND && (result == InteractionResultProxy.INSTANCE.getFail() || result == InteractionResultProxy.INSTANCE.getPass())) {
+                        serverPlayer.simulatePacket(ServerboundUseItemOnPacketProxy.INSTANCE.newInstance(
+                                InteractionHandProxy.OFF_HAND,
+                                nmsHitResult,
+                                0
+                        ));
                     }
                 }
             }
@@ -574,9 +587,10 @@ public final class ItemEventListener implements Listener {
         if (foodData == null) return;
         event.setCancelled(true);
         int oldFoodLevel = player.getFoodLevel();
-        if (foodData.nutrition() != 0) player.setFoodLevel(MiscUtils.clamp(oldFoodLevel + foodData.nutrition(), 0, 20));
+        int newFoodLevel = MiscUtils.clamp(oldFoodLevel + foodData.nutrition(), 0, 20);
+        if (foodData.nutrition() != 0) player.setFoodLevel(newFoodLevel);
         float oldSaturation = player.getSaturation();
-        if (foodData.saturation() != 0) player.setSaturation(MiscUtils.clamp(oldSaturation, 0, 10));
+        if (foodData.saturation() != 0) player.setSaturation(MiscUtils.clamp(oldSaturation + foodData.saturation(), 0, newFoodLevel));
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)

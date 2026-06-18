@@ -6,6 +6,7 @@ import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.InactiveBlockDefinition;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
+import net.momirealms.craftengine.core.plugin.logger.Debugger;
 import net.momirealms.craftengine.core.registry.BuiltInRegistries;
 import net.momirealms.craftengine.core.registry.Holder;
 import net.momirealms.craftengine.core.registry.WritableRegistry;
@@ -77,13 +78,18 @@ public final class DefaultSectionSerializer {
             }
             Holder<BlockDefinition> owner = BuiltInRegistries.BLOCK.get(key).orElseGet(() -> {
                 Holder.Reference<BlockDefinition> holder = ((WritableRegistry<BlockDefinition>) BuiltInRegistries.BLOCK).registerForHolder(ResourceKey.create(BuiltInRegistries.BLOCK.key().location(), key));
-                InactiveBlockDefinition inactiveBlock = new InactiveBlockDefinition(holder);
+                InactiveBlockDefinition inactiveBlock = new InactiveBlockDefinition(holder, key.namespace.equals("minecraft") ? key : null); // 如果这个id是个原版方块，那么绑定为原版方块
                 holder.bindValue(inactiveBlock);
                 inactiveBlock.setBehavior(CraftEngine.instance().blockManager().getEmptyBlockBehavior());
                 return holder;
             });
-            ImmutableBlockState state = owner.value().getBlockState(data);
-            paletteEntries.add(state);
+            try {
+                ImmutableBlockState state = owner.value().getBlockState(data);
+                paletteEntries.add(state);
+            } catch (Throwable t) {
+                Debugger.BLOCK.warn(() -> "Failed to deserialize block " + id + data.getAsString(), t);
+                paletteEntries.add(owner.value().defaultState());
+            }
         }
         long[] data = blockStates.getLongArray("data");
         ReadableContainer.Serialized<ImmutableBlockState> serialized = new ReadableContainer.Serialized<>(paletteEntries,

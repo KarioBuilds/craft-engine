@@ -59,6 +59,8 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
 
     public abstract void abortMiningBlock();
 
+    public abstract boolean clientSideCanBreak();
+
     public abstract void breakBlock(int x, int y, int z);
 
     public abstract double getCachedInteractionRange();
@@ -94,6 +96,10 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
     public abstract void sendMessage(Component text, boolean overlay);
 
     public abstract void sendTitle(Component title, Component subtitle, int fadeIn, int stay, int fadeOut);
+
+    public abstract void setIsSimulatingInteraction(boolean isSimulating);
+
+    public abstract boolean isSimulatingInteraction();
 
     public abstract boolean updateLastSuccessfulInteractionTick(int tick);
 
@@ -251,6 +257,8 @@ public abstract class Player extends AbstractEntity implements NetWorkUser {
     public abstract CullableHolder getTrackedBlockEntity(BlockPos blockPos);
 
     public abstract void removeTrackedBlockEntities(Collection<BlockPos> renders);
+
+    public abstract CullableHolder getTrackedEntity(int entityId);
 
     public abstract void addTrackedEntity(int entityId, Cullable cullable);
 

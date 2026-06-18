@@ -443,7 +443,7 @@ public final class RecipeEventListener implements Listener {
         Item wrappedFirst = BukkitItemManager.instance().wrap(first);
         Optional<ItemDefinition> firstCustom = wrappedFirst.getDefinition();
         Item wrappedSecond = BukkitItemManager.instance().wrap(second);
-        Optional<ItemDefinition> secondCustom = wrappedFirst.getDefinition();
+        Optional<ItemDefinition> secondCustom = wrappedSecond.getDefinition();
         // 两个都是原版物品
         if (firstCustom.isEmpty() && secondCustom.isEmpty()) {
             return;
@@ -795,8 +795,8 @@ public final class RecipeEventListener implements Listener {
         } else {
             if (craftingTableRecipe.alwaysRebuildOutput()) {
                 ItemBuildContext itemBuildContext = ItemBuildContext.of(serverPlayer);
-                if (craftingTableRecipe instanceof CustomDyeRecipe dyeRecipe) {
-                    inventory.setResult(ItemStackUtils.getBukkitStack(dyeRecipe.assemble(getCraftingInput(inventory), itemBuildContext)));
+                if (craftingTableRecipe.requiresInput()) {
+                    inventory.setResult(ItemStackUtils.getBukkitStack(craftingTableRecipe.assemble(getCraftingInput(inventory), itemBuildContext)));
                 } else {
                     inventory.setResult(ItemStackUtils.getBukkitStack(craftingTableRecipe.assemble(null, itemBuildContext)));
                 }

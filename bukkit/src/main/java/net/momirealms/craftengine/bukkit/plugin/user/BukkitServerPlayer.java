@@ -5,6 +5,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import com.mojang.authlib.properties.PropertyMap;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -78,7 +79,6 @@ import net.momirealms.craftengine.proxy.minecraft.world.effect.MobEffectsProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.LivingEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributeInstanceProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributeModifierProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributesProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.AbilitiesProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.player.InventoryProxy;
@@ -138,6 +138,7 @@ public class BukkitServerPlayer extends Player {
     private InetAddress address;
     private String name;
     private UUID uuid;
+    private int entityId;
     private PropertyMap propertyMap;
     private boolean isNameVerified;
     private boolean isUUIDVerified;
@@ -231,6 +232,9 @@ public class BukkitServerPlayer extends Player {
     private FurnitureHitData furnitureHitData;
     // 缓存可见的家具光源数据
     private FurnitureLightData furnitureLightData;
+    // 是否正在模拟客户端可能缺失的交互逻辑
+    // 比如客户端觉得音符盒可以交互，但实际上不可，导致副手的交互包并未发出，最终导致副手的物品逻辑不执行
+    private boolean isSimulatingInteraction;
 
     public BukkitServerPlayer(BukkitCraftEngine plugin, @Nullable Channel channel) {
         this.channel = channel;
@@ -253,6 +257,7 @@ public class BukkitServerPlayer extends Player {
         this.uuid = player.getUniqueId();
         this.isUUIDVerified = true;
         this.name = player.getName();
+        this.entityId = player.getEntityId();
         this.isNameVerified = true;
         this.initPlayStageFields();
         byte[] bytes = player.getPersistentDataContainer().get(KeyUtils.toNamespacedKey(CooldownData.COOLDOWN_KEY), PersistentDataType.BYTE_ARRAY);
@@ -392,6 +397,16 @@ public class BukkitServerPlayer extends Player {
     public void sendMessage(Component text, boolean overlay) {
         Object packet = ClientboundSystemChatPacketProxy.INSTANCE.newInstance(ComponentUtils.adventureToMinecraft(text), overlay);
         sendPacket(packet, false);
+    }
+
+    @Override
+    public void setIsSimulatingInteraction(boolean isSimulating) {
+        this.isSimulatingInteraction = isSimulating;
+    }
+
+    @Override
+    public boolean isSimulatingInteraction() {
+        return this.isSimulatingInteraction;
     }
 
     @Override
@@ -571,6 +586,15 @@ public class BukkitServerPlayer extends Player {
     public void sendCustomPackets(List<? extends ClientCustomPacket> packets) {
         for (ClientCustomPacket packet : packets) {
             sendCustomPacket(packet);
+        }
+    }
+
+    @Override
+    public void sendByteBufPacket(ByteBuf buf, boolean immediately) {
+        if (immediately) {
+            this.channel.writeAndFlush(buf);
+        } else {
+            this.channel.write(buf);
         }
     }
 
@@ -908,37 +932,24 @@ public class BukkitServerPlayer extends Player {
 
     @Override
     public void setClientSideCanBreakBlock(boolean canBreak) {
-        try {
-            // 超过1秒就强制同步一次属性
-            if (this.clientSideCanBreak == canBreak && !shouldSyncAttribute()) {
-                return;
-            }
-            this.clientSideCanBreak = canBreak;
+        // 超过1秒就强制同步一次属性
+        if (this.clientSideCanBreak == canBreak && !shouldSyncAttribute()) {
+            return;
+        }
+        this.clientSideCanBreak = canBreak;
+        if (VersionHelper.isOrAbove1_20_5) {
+            Object serverPlayer = serverPlayer();
+            Object attributeInstance = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer, AttributesProxy.BLOCK_BREAK_SPEED);
+            sendPacket(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(entityId(), Lists.newArrayList(attributeInstance)), true);
+        } else {
             if (canBreak) {
-                if (VersionHelper.isOrAbove1_20_5) {
-                    Object serverPlayer = serverPlayer();
-                    Object attributeInstance = LivingEntityProxy.INSTANCE.getAttribute(serverPlayer, AttributesProxy.BLOCK_BREAK_SPEED);
-                    sendPacket(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(entityId(), Lists.newArrayList(attributeInstance)), true);
-                } else {
-                    resetEffect(MobEffectsProxy.MINING_FATIGUE);
-                    resetEffect(MobEffectsProxy.HASTE);
-                }
+                resetEffect(MobEffectsProxy.MINING_FATIGUE);
+                resetEffect(MobEffectsProxy.HASTE);
             } else {
-                if (VersionHelper.isOrAbove1_20_5) {
-                    Object attributeModifier = VersionHelper.isOrAbove1_21 ?
-                            AttributeModifierProxy.INSTANCE.newInstance(KeyUtils.toIdentifier(Key.CRAFTENGINE_NAMESPACE, "custom_hardness"), -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE) :
-                            AttributeModifierProxy.INSTANCE.newInstance(UUID.randomUUID(), Key.CRAFTENGINE_NAMESPACE + ":custom_hardness", -9999d, AttributeModifierProxy.OperationProxy.ADD_VALUE);
-                    Object attributeSnapshot = ClientboundUpdateAttributesPacketProxy.AttributeSnapshotProxy.INSTANCE.newInstance(AttributesProxy.BLOCK_BREAK_SPEED, 1d, Lists.newArrayList(attributeModifier));
-                    Object newPacket = ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$1(entityId(), Lists.newArrayList(attributeSnapshot));
-                    sendPacket(newPacket, true);
-                } else {
-                    Object fatiguePacket = MobEffectUtils.createPacket(MobEffectsProxy.MINING_FATIGUE, entityId(), (byte) 9, -1, false, false, false);
-                    Object hastePacket = MobEffectUtils.createPacket(MobEffectsProxy.HASTE, entityId(), (byte) 0, -1, false, false, false);
-                    sendPackets(List.of(fatiguePacket, hastePacket), true);
-                }
+                Object fatiguePacket = MobEffectUtils.createPacket(MobEffectsProxy.MINING_FATIGUE, entityId(), (byte) 9, -1, false, false, false);
+                Object hastePacket = MobEffectUtils.createPacket(MobEffectsProxy.HASTE, entityId(), (byte) 0, -1, false, false, false);
+                sendPackets(List.of(fatiguePacket, hastePacket), true);
             }
-        } catch (Throwable e) {
-            this.plugin.logger().warn("Failed to set attribute for player " + platformPlayer().getName(), e);
         }
     }
 
@@ -990,6 +1001,11 @@ public class BukkitServerPlayer extends Player {
         this.destroyedState = null;
         this.destroyPos = null;
         this.isDestroyingCustomBlock = false;
+    }
+
+    @Override
+    public boolean clientSideCanBreak() {
+        return this.clientSideCanBreak;
     }
 
     private void resetEffect(Object mobEffect) {
@@ -1167,7 +1183,7 @@ public class BukkitServerPlayer extends Player {
 
     @Override
     public int entityId() {
-        return platformPlayer().getEntityId();
+        return this.entityId;
     }
 
     @Override
@@ -1710,6 +1726,11 @@ public class BukkitServerPlayer extends Player {
             this.gameEdition = this.plugin.compatibilityManager().isBedrockPlayer(this) ? GameEdition.BEDROCK : GameEdition.JAVA;
         }
         return this.gameEdition;
+    }
+
+    @Override
+    public CullableHolder getTrackedEntity(int entityId) {
+        return this.trackedEntities.get(entityId);
     }
 
     @Override
